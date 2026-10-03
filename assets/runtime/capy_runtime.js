@@ -424,6 +424,31 @@
     } catch (e) { return 'null'; }
   };
 
+  /// 宿主播放内核声明。
+  ///
+  /// 组件会把播放模式写成全局常量（实测 MissAV：`var MISSAV_PLAYER_MODE = "mpv"`），
+  /// 并据此向后端索要「mpv 专用清单」—— 而本宿主用的是系统播放器
+  /// （AVPlayer / ExoPlayer），拿到 mpv 变体只会报 unsupported URL。
+  /// 组件装载后把这类全局量改成宿主真正支持的内核即可（MissAV 自己的注释：
+  /// 「显式指定 hls/system 时由服务端下发符合 Apple/FFmpeg 标准的 HLS master」）。
+  window.__capyApplyHostPlayerMode = function (mode) {
+    var target = String(mode || 'hls').toLowerCase();
+    var changed = [];
+    try {
+      Object.keys(window).forEach(function (key) {
+        if (!/_?PLAYER_?MODE$/i.test(key)) { return; }
+        var value = window[key];
+        if (typeof value !== 'string' || !value) { return; }
+        if (value.toLowerCase() === target) { return; }
+        try {
+          window[key] = target;
+          changed.push(key + '=' + target);
+        } catch (e) {}
+      });
+    } catch (e) {}
+    return changed.join(',');
+  };
+
   // 装配诊断：哪些全局函数可调用
   window.__capyDiagnose = function () {
     var meta = window.WidgetMetadata || {};

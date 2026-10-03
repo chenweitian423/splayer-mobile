@@ -139,6 +139,12 @@ class WidgetRuntime {
       throw RuntimeException('组件脚本注入失败：$e');
     }
 
+    // 声明宿主播放内核：组件若把播放模式写死成 mpv，会向后端要 mpv 专用清单，
+    // 系统播放器（AVPlayer/ExoPlayer）解析不了 —— 这里改成本宿主支持的内核。
+    try {
+      await _controller.runJavaScript('__capyApplyHostPlayerMode("hls");');
+    } catch (_) {}
+
     final metaJson = await _evalString('__capyMetadata()');
     if (metaJson == null || metaJson == 'null' || metaJson.isEmpty) {
       throw RuntimeException('该脚本未声明全局 WidgetMetadata');

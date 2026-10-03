@@ -147,6 +147,20 @@ await withRuntime(async (sandbox, sent) => {
   void bridged;
 });
 
+console.log('== 6. 宿主播放内核声明：写死 mpv 的组件要被掰成 hls ==');
+await withRuntime(async (sandbox) => {
+  // 模拟 MissAV：组件顶部 var MISSAV_PLAYER_MODE = "mpv"
+  sandbox.MISSAV_PLAYER_MODE = 'mpv';
+  sandbox.PLAYER_MODE = 'mpv';
+  sandbox.SOMETHING_ELSE = 'keep-me';
+  const changed = sandbox.__capyApplyHostPlayerMode('hls');
+  check('MISSAV_PLAYER_MODE 被改成 hls', sandbox.MISSAV_PLAYER_MODE === 'hls', sandbox.MISSAV_PLAYER_MODE);
+  check('通用 PLAYER_MODE 也被改', sandbox.PLAYER_MODE === 'hls', sandbox.PLAYER_MODE);
+  check('返回被改动的全局名', String(changed).includes('MISSAV_PLAYER_MODE'), String(changed));
+  check('不误伤其它全局量', sandbox.SOMETHING_ELSE === 'keep-me');
+  check('已是 hls 时不重复写', sandbox.__capyApplyHostPlayerMode('hls') === '', '仍返回了改动');
+});
+
 console.log('');
 if (failures.length) {
   console.log(`失败 ${failures.length} 项：${failures.join(' / ')}`);

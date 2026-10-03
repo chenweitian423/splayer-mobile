@@ -28,6 +28,19 @@
 | `loadDetail(link)` 的参数 | **必须是字符串**。实测 8 支组件全部吃字符串，其中 5 支（51吃瓜/帝果/黄豆/剧果/野果）会把参数**直接当 URL** 用 —— 传对象就变成 `[object Object]`，详情页挂掉、无法播放 | 先按规范传字符串；失败再回退传条目对象（红果/黄果/MissAV 支持对象写法） |
 | 首页该取哪个模块 | 组件常把**搜索**放在 `modules[0]`（红果、MissAV 都是），空关键词下必然返回空列表 → 首页一片空白 | `pickHomeModule()` 三级回退：非搜索非历史 → 非搜索 → 第一个 |
 | 桥接参数编码层次 | 值 → `jsonEncode`（JSON 文本）→ `jsonEncode`（JS 字符串字面量），**三层缺一不可**。少一层，JS 的 `JSON.parse` 拿到的不是字符串，参数静默变 `{}`/`null` —— 真机现象是「所有组件一起报 `组件传入的是 null`」 | 统一走 `buildInvokeExpression()`，由单测与 Node 契约测试双重把关 |
+| 组件的**播放内核** | 组件可能把内核写死（实测 MissAV：`var MISSAV_PLAYER_MODE = "mpv"`），并据此向后端要 **mpv 专用清单** —— 系统播放器（AVPlayer/ExoPlayer）拿到只会报 `unsupported URL (-1002)` | 两道保险：装载后 `__capyApplyHostPlayerMode("hls")` 掰全局常量；播放入口用 `playUrlCandidates()` 展开候选链（`player=mpv` → `player=hls` 优先，原地址兜底） |
+
+## 播放器
+
+| 能力 | 说明 |
+|---|---|
+| 队列化播放 | 剧集 = 集、电影 = 线路，详情页把整条队列交给播放器 |
+| 竖滑切集 | **上滑下一集 / 下滑上一集**，带顶部提示浮层 |
+| 选集面板 | 底部抽屉网格，随时跳集 |
+| 倍速 | 0.5x / 0.75x / 1x / 1.25x / 1.5x / 2x |
+| 线路切换 | 自动失败换源 + 手动换线路（含组件 `playSources` 当作同集备用线路） |
+| 失败处理 | 全部候选失败才报错，可「重试 / 换线路 / 复制错误」一键反馈 |
+| 外挂播放器 | 可交给系统播放器打开 |
 
 换组件或改桥接层后，先跑这两个工具（CI 也会跑第二个）：
 
@@ -44,6 +57,7 @@ node tools/runtime-contract-test.mjs               # 装真实运行时，断言
 lib/
   main.dart                     应用入口 + 底部导航（首页/搜索/插件/设置）
   models/capy_models.dart       组件数据模型（含字段别名兜底）
+  models/play_queue.dart        播放队列与候选线路（mpv→hls 改写、失败换源）
   runtime/widget_runtime.dart   运行时：WebView 沙箱 + 双向桥
   runtime/plugin_engine.dart    运行时池，并把 WebView 挂在屏幕外保活
   store/plugin_store.dart       组件落盘 / 导入 / 托管页扫描

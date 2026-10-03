@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/capy_models.dart';
+import '../models/play_queue.dart';
 import '../runtime/widget_runtime.dart';
 import 'common.dart';
 import 'player_page.dart';
@@ -54,13 +55,88 @@ class _DetailPageState extends State<DetailPage> {
     }
   }
 
-  void _playUrl(String url, Map<String, String> headers, String title) {
-    if (url.isEmpty) return;
+  Map<String, String> _headersOf(Map<String, String> own) {
+    if (own.isNotEmpty) return own;
+    final detailHeaders = _detail?.customHeaders ?? const <String, String>{};
+    if (detailHeaders.isNotEmpty) return detailHeaders;
+    return widget.item.customHeaders;
+  }
+
+  /// 播放队列：有分集就是「集」，只有线路就是「线路」。
+  List<PlayItem> get _queue {
+    final detail = _detail;
+    final episodes = detail?.allEpisodes ?? const <Episode>[];
+    if (episodes.isNotEmpty) {
+      return episodes
+          .map((e) => PlayItem(
+                title: e.title,
+                url: e.videoUrl,
+                headers: _headersOf(e.customHeaders),
+                playerType: 'system',
+              ))
+          .where((item) => !item.isEmpty)
+          .toList();
+    }
+    final sources = detail?.playSources ?? const <PlaySource>[];
+    if (sources.isNotEmpty) {
+      return sources
+          .map((s) => PlayItem(
+                title: s.title,
+                url: s.videoUrl,
+                headers: _headersOf(s.customHeaders),
+                playerType: s.playerType,
+              ))
+          .where((item) => !item.isEmpty)
+          .toList();
+    }
+    final directUrl = (detail?.videoUrl.isNotEmpty ?? false) ? detail!.videoUrl : widget.item.videoUrl;
+    if (directUrl.isNotEmpty) {
+      return <PlayItem>[
+        PlayItem(
+          title: '默认线路',
+          url: directUrl,
+          headers: _headersOf(widget.item.customHeaders),
+          playerType: widget.item.playerType,
+        ),
+      ];
+    }
+    return const <PlayItem>[];
+  }
+
+  /// 换线路用的备用来源：分集播放时，playSources 是同集的其它线路。
+  List<PlayItem> get _fallbacks {
+    final detail = _detail;
+    if (detail == null || detail.allEpisodes.isEmpty) return const <PlayItem>[];
+    return detail.playSources
+        .map((s) => PlayItem(
+              title: '备用·${s.title}',
+              url: s.videoUrl,
+              headers: _headersOf(s.customHeaders),
+              playerType: s.playerType,
+            ))
+        .where((item) => !item.isEmpty)
+        .toList();
+  }
+
+  void _play(int index) {
+    final queue = _queue;
+    if (queue.isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => PlayerPage(url: url, headers: headers, title: title),
+        builder: (_) => PlayerPage(
+          episodes: queue,
+          initialIndex: index.clamp(0, queue.length - 1),
+          title: _title,
+          fallbacks: _fallbacks,
+        ),
       ),
     );
+  }
+
+  String get _title {
+    final detail = _detail;
+    if (detail != null && detail.title.isNotEmpty) return detail.title;
+    return widget.item.title;
   }
 
   @override
@@ -68,14 +144,13 @@ class _DetailPageState extends State<DetailPage> {
     final theme = Theme.of(context);
     final detail = _detail;
     final item = widget.item;
-    final title = detail?.title.isNotEmpty == true ? detail!.title : item.title;
-    final poster = detail?.posterUrl.isNotEmpty == true ? detail!.posterUrl : item.posterUrl;
-    final backdrop = detail?.backdropUrl.isNotEmpty == true ? detail!.backdropUrl : item.backdropUrl;
-    final description = detail?.description.isNotEmpty == true ? detail!.description : item.description;
+    final title = _title;
+    final poster = (detail?.posterUrl.isNotEmpty ?? false) ? detail!.posterUrl : item.posterUrl;
+    final backdrop = (detail?.backdropUrl.isNotEmpty ?? false) ? detail!.backdropUrl : item.backdropUrl;
+    final description = (detail?.description.isNotEmpty ?? false) ? detail!.description : item.description;
+    final queue = _queue;
     final episodes = detail?.allEpisodes ?? const <Episode>[];
     final sources = detail?.playSources ?? const <PlaySource>[];
-    final directUrl = detail?.videoUrl.isNotEmpty == true ? detail!.videoUrl : item.videoUrl;
-    final headers = detail?.customHeaders.isNotEmpty == true ? detail!.customHeaders : item.customHeaders;
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -102,7 +177,7 @@ class _DetailPageState extends State<DetailPage> {
                       width: 110,
                       height: 165,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => const SizedBox(width: 110, height: 165),
+                      errorWidget: (_, __, ___) => const SizedBox.shrink(),
                     ),
                   ),
                 const SizedBox(width: 14),
@@ -131,11 +206,11 @@ class _DetailPageState extends State<DetailPage> {
                         ),
                       ],
                       const SizedBox(height: 12),
-                      if (directUrl.isNotEmpty)
+                      if (queue.isNotEmpty)
                         FilledButton.icon(
-                          onPressed: () => _playUrl(directUrl, headers, title),
+                          onPressed: () => _play(0),
                           icon: const Icon(Icons.play_arrow),
-                          label: const Text('立即播放'),
+                          label: Text(episodes.length > 1 ? '从第 1 集开始（共 ${episodes.length} 集）' : '立即播放'),
                         ),
                     ],
                   ),
@@ -144,13 +219,14 @@ class _DetailPageState extends State<DetailPage> {
             ),
           ),
           if (_loading) const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
-          if (_error.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: ErrorBanner(message: _error, onRetry: _load)),
+          if (_error.isNotEmpty)
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: ErrorBanner(message: _error, onRetry: _load)),
           if (description.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(description, style: theme.textTheme.bodyMedium),
             ),
-          if (sources.isNotEmpty)
+          if (episodes.isEmpty && sources.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Column(
@@ -158,13 +234,13 @@ class _DetailPageState extends State<DetailPage> {
                 children: <Widget>[
                   Text('播放线路', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  for (final source in sources)
+                  for (var i = 0; i < sources.length; i++)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.play_circle_outline),
-                      title: Text(source.title),
-                      subtitle: source.description.isEmpty ? null : Text(source.description),
-                      onTap: () => _playUrl(source.videoUrl, source.customHeaders, '$title · ${source.title}'),
+                      title: Text(sources[i].title),
+                      subtitle: sources[i].description.isEmpty ? null : Text(sources[i].description),
+                      onTap: () => _play(i),
                     ),
                 ],
               ),
@@ -175,23 +251,32 @@ class _DetailPageState extends State<DetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('选集（${episodes.length}）', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 12),
+                  Row(
+                    children: <Widget>[
+                      Expanded(child: Text('选集（${episodes.length}）', style: theme.textTheme.titleMedium)),
+                      if (queue.isNotEmpty)
+                        TextButton(
+                          onPressed: () => _play(0),
+                          child: const Text('全屏选集'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: <Widget>[
-                      for (final episode in episodes)
+                      for (var i = 0; i < episodes.length; i++)
                         OutlinedButton(
-                          onPressed: () => _playUrl(episode.videoUrl, episode.customHeaders, '$title · ${episode.title}'),
-                          child: Text(episode.title, overflow: TextOverflow.ellipsis),
+                          onPressed: () => _play(i),
+                          child: Text(episodes[i].title, overflow: TextOverflow.ellipsis),
                         ),
                     ],
                   ),
                 ],
               ),
             ),
-          if (!_loading && _error.isEmpty && detail != null && episodes.isEmpty && sources.isEmpty && directUrl.isEmpty)
+          if (!_loading && _error.isEmpty && detail != null && queue.isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
               child: Center(child: Text('该条目没有解析到可播放地址')),

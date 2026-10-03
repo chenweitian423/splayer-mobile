@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:splayer_mobile/models/capy_models.dart';
+import 'package:splayer_mobile/models/play_queue.dart';
 import 'package:splayer_mobile/runtime/widget_runtime.dart';
 import 'package:splayer_mobile/store/plugin_store.dart';
 
@@ -226,6 +227,52 @@ void main() {
       final literal = expression.substring(expression.indexOf('"search", ') + '"search", '.length);
       final jsString = jsonDecode(literal.replaceAll(RegExp(r'\);$'), '')) as String;
       expect(jsonDecode(jsString), messy);
+    });
+  });
+
+  group('播放候选（MissAV 的 player=mpv 变体在系统播放器上必挂）', () {
+    const mpvUrl = 'https://happy-capy.garland.indevs.in/api/v1/subtitles/master.m3u8'
+        '?duration=1802&builtinChineseSubtitle=0&player=mpv&video=https%3A%2F%2Fsurrit.com%2F720p%2Fvideo.m3u8';
+
+    test('URL 带 player=mpv 时，先试 hls 兼容变体，原地址留作后备', () {
+      final candidates = playUrlCandidates(mpvUrl);
+      expect(candidates.length, 2, reason: '两条：hls 兼容 + 原始 mpv');
+      expect(candidates.first.url, contains('player=hls'));
+      expect(candidates.first.url, isNot(contains('player=mpv')));
+      expect(candidates.last.url, mpvUrl);
+      expect(candidates.first.label, 'HLS 兼容线路');
+    });
+
+    test('playerType 声明为 mpv 时同样触发改写', () {
+      const plain = 'https://happy-capy.garland.indevs.in/api/v1/subtitles/master.m3u8?duration=10&player=mpv';
+      final candidates = playUrlCandidates(plain, playerType: 'mpv');
+      expect(candidates.first.url, contains('player=hls'));
+    });
+
+    test('普通地址原样返回，只有一条候选', () {
+      const url = 'https://cdn.example.com/720p/video.m3u8';
+      final candidates = playUrlCandidates(url);
+      expect(candidates.single.url, url);
+      expect(candidates.single.label, '线路 1');
+    });
+
+    test('player=mpv 后面还有参数也能改写，且不乱改类似串', () {
+      expect(
+        rewriteMpvToHls('https://h/a.m3u8?player=mpv&video=x'),
+        'https://h/a.m3u8?player=hls&video=x',
+      );
+      expect(rewriteMpvToHls('https://h/a.m3u8?x=player=mpvv'), isNull);
+      expect(rewriteMpvToHls('https://h/a.m3u8?player=mpv'), 'https://h/a.m3u8?player=hls');
+      expect(rewriteMpvToHls('https://h/a.m3u8'), isNull);
+    });
+
+    test('headers 透传到每条候选', () {
+      final candidates = playUrlCandidates(mpvUrl, headers: <String, String>{'Referer': 'https://missav.com/'});
+      expect(candidates.every((c) => c.headers['Referer'] == 'https://missav.com/'), isTrue);
+    });
+
+    test('空地址不产生候选', () {
+      expect(playUrlCandidates(''), isEmpty);
     });
   });
 }

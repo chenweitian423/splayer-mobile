@@ -11,18 +11,17 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `C:\Users\47403\WorkBuddy\2026-10-03-23-40-41\splayer_mobile` |
-> | 版本 | **v1.0.2**（v1.0.0/v1.0.1 已发布；v1.0.2 修了桥接参数编码，见进展记录） |
+> | 版本 | **v1.0.3**（v1.0.0–v1.0.2 已发布；v1.0.3 修 MissAV 播放 + 播放器补齐选集/竖滑/倍速） |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
 > | 校验 | 容器内 `flutter analyze` 零问题、`flutter test` 12/12；组件契约冒烟 `tools/widget-smoke.mjs` |
 > | 起点依据 | 判定报告 `_recon\SPlayer_TV_1.8-组件兼容判定.md` + 判定器 `_recon\apk_widget_compat.py` |
 >
 > **③ 下一步待办（按优先级）**
-> 1. **真机复测 v1.0.2**：8 支组件应都能进详情；51吃瓜/帝果/黄豆/剧果/野果 + 红果 应能播放。
-> 2. 若仍有组件播不了：进 **设置 → 网络日志**，复制全文发我 —— 里面能看到组件请求了什么、返回什么状态。
-> 3. MissAV 属独立问题：它依赖后端 `/api/v1/discovery/sites/missav/routes` 下发线路 + `9527.men` 可达，App 侧只能如实报错，需内容源/网络侧解决。
-> 4. 播放内核升级：需要 mpv 级能力（Profile 7 FEL / 更多封装）时把 `video_player` 换 `media_kit`。
-> 5. 待补能力：`Widget.tmdb`、`sectionMode`、TV 大屏布局。
+> 1. **真机复测 v1.0.3**：MissAV 点播（应走 `player=hls` 首选线路；若 hls 变体后端也不给，播放器会自动回落到原始线路并显示两条候选）；播放页验「上滑下一集 / 选集面板 / 倍速 / 线路切换」。
+> 2. 若 MissAV 仍然两条线路都失败：进 **设置 → 网络日志** 复制全文发我，重点看 `/api/v1/subtitles/master.m3u8` 的返回状态。
+> 3. 播放内核升级：mpv 变体是给 mpv 内核用的，要彻底吃下就得把 `video_player` 换 `media_kit`（native mpv）。
+> 4. 待补能力：`Widget.tmdb`、`sectionMode`、TV 大屏布局、字幕/弹幕面板。
 >
 > **④ 铁律（踩过的坑）**
 > - **不要试图 1:1 反编译还原**：原 TV 版是 Kotlin+Compose 编译产物（78MB / 13 dex / R8 混淆），Compose 编译期变换不可逆。只做 clean-room（同规范、同模型、同能力）。
@@ -35,6 +34,7 @@
 >   统一走 `buildInvokeExpression()`，别手搓字符串拼接。
 > - ★★ **首页别拿 `modules[0]`**：红果/MissAV 的第一模块是搜索，空关键词必然空列表 → 首页空白。用 `pickHomeModule()`。
 > - **改完桥接层就跑 `node tools/runtime-contract-test.mjs`**（CI 也跑）：它在 Node 沙箱里装真实运行时，验证组件实际收到的参数。
+> - ★★ **系统播放器 ≠ mpv**：组件可能把播放内核写死（实测 MissAV `MISSAV_PLAYER_MODE="mpv"`），并据此向后端要 mpv 专用清单 —— 系统播放器拿到只会 `unsupported URL`。两道保险都要在：① 装载后 `__capyApplyHostPlayerMode("hls")` 掰常量；② 播放入口按 `playUrlCandidates()` 展开候选链（`player=mpv`→`player=hls` 优先，原地址兜底），别只试一条。
 > - **组件契约变了先跑 `node tools/widget-smoke.mjs <组件目录>`**：它会在 Node 沙箱里真跑每个模块，并断言宿主只传字符串 URL。
 > - **WebView 宿主不能用 `Offstage`**（会 suspend 掉 JS），要屏幕外 `Positioned`。
 > - **`runJavaScriptReturningResult` 两端不一致**：Android 返回带引号的 JSON 串、iOS 返回裸值 → 统一走 `WidgetRuntime._normalizeJsResult`。
@@ -58,6 +58,31 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · v1.0.3 MissAV 播放不了 + 播放器补齐选集/竖滑/倍速
+
+真机反馈（v1.0.2 整体通过）：① MissAV 能出详情但一点播就 `PlatformException(VideoError, unsupported URL, CoreMediaErrorDomain -1002)`；② 播放页缺「上下滑切集」「查看全部集随时切换」「倍速」。
+
+**MissAV 根因（插件自己写明的）**：
+```js
+var MISSAV_PLAYER_MODE = "mpv";              // 插件顶部写死
+// 注释原文：当显式指定 hls/system 时由服务端下发符合 Apple/FFmpeg 标准的 HLS master
+```
+`loadDetail` 里调 `buildSubtitleMasterUrl(...)` 时**漏传 playerType** → 走 `missavPlayerMode()` → `player=mpv` → 后端按 mpv 内核下发清单 → iOS 的 AVPlayer 直接 -1002。它是给 SPlayer（内置 mpv）写的。
+
+**修法（两层，都不改组件源码）**：
+1. **宿主播放内核声明**：`__capyApplyHostPlayerMode("hls")` —— 组件装载后，把名字匹配 `*PLAYER_MODE` 的全局字符串常量统一改成宿主真正支持的内核（本宿主是系统播放器）。
+2. **播放候选链**：`lib/models/play_queue.dart` 的 `playUrlCandidates()` 把 `player=mpv` 改写为 `player=hls` 作为首选，原地址留作后备；播放器逐条尝试，全失败才报错。
+
+**播放器补齐**（`lib/ui/player_page.dart` 重写）：
+- 队列化：剧集=集、电影=线路，详情页把整条队列交给播放器；
+- **上滑下一集 / 下滑上一集**（手势 + 顶部提示浮层）；
+- **选集面板**（底部抽屉网格，随时跳集）；
+- **倍速** 0.5x–2x；
+- **线路切换**（含组件的 `playSources` 作为同集备用线路）+ 失败自动换源；
+- 失败页可「重试 / 换线路 / 复制错误」。
+
+新增测试：Node 契约测试加第 6 组（PLAYER_MODE 改写，5 项）；Dart 侧 6 条播放候选单测（含改写边界与 headers 透传）。
 
 ### 2026-10-04 · v1.0.2 修「参数编码少一层」（v1.0.1 引入的回归）
 
