@@ -39,7 +39,7 @@ class _DetailPageState extends State<DetailPage> {
       _error = '';
     });
     try {
-      final detail = await widget.runtime.loadDetail(widget.item.link);
+      final detail = await widget.runtime.loadDetail(widget.item);
       if (!mounted) return;
       setState(() {
         _detail = detail;

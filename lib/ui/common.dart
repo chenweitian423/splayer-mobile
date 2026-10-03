@@ -141,6 +141,17 @@ class HorizontalPosterRow extends StatelessWidget {
             height: 190,
             child: Center(child: CircularProgressIndicator()),
           )
+        else if (items.isEmpty)
+          Container(
+            height: 120,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              '该分类暂无内容${onMore != null ? '（点右上角「全部」换个分类）' : ''}',
+              style: theme.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          )
         else
           SizedBox(
             height: 208,

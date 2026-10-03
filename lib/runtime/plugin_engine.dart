@@ -55,6 +55,23 @@ class PluginEngine extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 汇总所有组件的网络请求日志（按时间排序），用于远程排障。
+  List<NetLogEntry> allNetLogs() {
+    final logs = <NetLogEntry>[];
+    for (final runtime in _runtimes.values) {
+      logs.addAll(runtime.netLogs);
+    }
+    logs.sort((a, b) => b.at.compareTo(a.at));
+    return logs;
+  }
+
+  void clearNetLogs() {
+    for (final runtime in _runtimes.values) {
+      runtime.clearNetLogs();
+    }
+    notifyListeners();
+  }
+
   /// 屏幕外的 WebView 宿主，挂在 App 根部。
   Widget buildHost() {
     final ids = _runtimes.keys.toList();

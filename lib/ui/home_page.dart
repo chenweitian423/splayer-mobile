@@ -102,9 +102,9 @@ class _PluginSectionState extends State<_PluginSection> {
     });
     try {
       final runtime = await PluginEngine.instance.runtimeFor(widget.record);
-      final module = runtime.meta?.modules.isNotEmpty == true ? runtime.meta!.modules.first : null;
+      final module = pickHomeModule(runtime.meta?.modules ?? const <CapyModule>[]);
       if (module == null) {
-        throw RuntimeException('组件未声明模块');
+        throw RuntimeException('组件未声明任何可用模块');
       }
       final items = await runtime.callList(module);
       if (!mounted) return;
@@ -178,7 +178,8 @@ class _PluginBrowsePageState extends State<PluginBrowsePage> {
     if (_modules.isEmpty) {
       return Scaffold(appBar: AppBar(title: Text(widget.record.title)), body: const Center(child: Text('该组件没有可用模块')));
     }
-    final initialIndex = widget.initialModule == null ? 0 : _modules.indexWhere((m) => m.id == widget.initialModule!.id);
+    final home = pickHomeModule(_modules);
+    final initialIndex = home == null ? 0 : _modules.indexWhere((m) => m.id == home.id);
     return DefaultTabController(
       length: _modules.length,
       initialIndex: initialIndex < 0 ? 0 : initialIndex,

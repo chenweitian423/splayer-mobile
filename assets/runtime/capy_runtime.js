@@ -102,14 +102,37 @@
   function request(method, url, opts) {
     var options = normalizeOptions(opts);
     return new Promise(function (resolve, reject) {
+      // 组件把对象当 URL 传是常见事故（多数组件 loadDetail(link) 会直接把 link
+      // 丢给 Widget.http.get）。这里立刻拦下并报出真实类型，避免变成
+      // 「No host specified in URI [object Object]」这种看不出源头的错。
+      if (typeof url !== 'string' || !url.trim()) {
+        var detail = url === null ? 'null' : typeof url;
+        var stack = '';
+        try { stack = String(new Error('bad url').stack || ''); } catch (e) {}
+        var badError = makeError(
+          'URL 非法：组件传入的是 ' + detail + '（' + String(url) + '）',
+          0, '', {}
+        );
+        post({
+          type: 'net', pluginId: PLUGIN_ID, method: method, url: String(url),
+          status: 0, ms: 0, ok: false, bytes: 0, error: badError.message, stack: stack
+        });
+        reject(badError);
+        return;
+      }
       var cbId = 'h' + (++cbSeq);
+      var startedAt = Date.now();
       var timer = setTimeout(function () {
         var pending = httpPending[cbId];
         if (!pending) { return; }
         delete httpPending[cbId];
+        reportNet(pending, 0, 0, 'timeout after ' + options.timeout + 'ms');
         pending.reject(makeError('request timeout after ' + options.timeout + 'ms', 0, '', {}));
       }, options.timeout + 4000);
-      httpPending[cbId] = { resolve: resolve, reject: reject, timer: timer };
+      httpPending[cbId] = {
+        resolve: resolve, reject: reject, timer: timer,
+        method: String(method || 'GET').toUpperCase(), url: url, startedAt: startedAt
+      };
       post({
         type: 'http',
         pluginId: PLUGIN_ID,
@@ -118,6 +141,14 @@
         url: String(url || ''),
         options: options
       });
+    });
+  }
+
+  function reportNet(pending, status, bytes, error) {
+    post({
+      type: 'net', pluginId: PLUGIN_ID, method: pending.method, url: pending.url,
+      status: status, ms: Date.now() - pending.startedAt, ok: !error && status > 0 && status < 400,
+      bytes: bytes, error: error || ''
     });
   }
 
@@ -130,9 +161,16 @@
     try { raw = typeof payload === 'string' ? JSON.parse(payload) : payload; }
     catch (e) { raw = { ok: false, status: 0, data: '', error: String(e) }; }
     if (raw && raw.transportError) {
+      reportNet(pending, 0, 0, String(raw.error || 'network error'));
       pending.reject(makeError(raw.error || 'network error', raw.status || 0, raw.data || '', raw.headers || {}));
       return;
     }
+    var bytes = 0;
+    try {
+      var body = raw && raw.data;
+      bytes = typeof body === 'string' ? body.length : JSON.stringify(body || '').length;
+    } catch (e) {}
+    reportNet(pending, Number(raw && raw.status) || 0, bytes, (raw && raw.ok === false) ? ('HTTP ' + (raw.status || 0)) : '');
     pending.resolve(buildResponse(raw));
   };
 
@@ -141,8 +179,59 @@
     if (!pending) { return; }
     clearTimeout(pending.timer);
     delete httpPending[cbId];
+    reportNet(pending, 0, 0, String(message || 'rejected'));
     pending.reject(makeError(message, 0, '', {}));
   };
+
+  /* ------------------------------------------------------------------ fetch */
+  // WebView 的 origin 是本地壳（capy.local），直接 fetch 外部站点会被 CORS 拦。
+  // 有些组件写了「Widget.http 优先、fetch 兜底」的双通道，兜底那条必然失败，
+  // 所以这里把 fetch 也接到原生通道上，让双通道真正可用。
+  (function () {
+    var originalFetch = window.fetch ? window.fetch.bind(window) : null;
+    window.fetch = function (input, init) {
+      var url;
+      try {
+        url = typeof input === 'string' ? input : (input && input.url) || String(input);
+      } catch (e) { url = ''; }
+      if (typeof url !== 'string' || !/^https?:/i.test(url)) {
+        return originalFetch ? originalFetch(input, init) : Promise.reject(makeError('fetch: 非法 URL ' + url, 0, '', {}));
+      }
+      var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      var headers = {};
+      var merge = function (source) {
+        if (!source) { return; }
+        try {
+          if (typeof source.forEach === 'function') { source.forEach(function (v, k) { headers[k] = String(v); }); }
+          else { Object.keys(source).forEach(function (k) { headers[k] = String(source[k]); }); }
+        } catch (e) {}
+      };
+      merge(input && input.headers);
+      if (init && init.headers) { merge(init.headers); }
+      var body = init && init.body !== undefined ? init.body : null;
+      return request(method, url, { headers: headers, body: body, timeout: DEFAULT_TIMEOUT })
+        .then(function (res) {
+          var isText = typeof res.data === 'string';
+          var text = isText ? res.data : JSON.stringify(res.data);
+          var response = {
+            ok: res.ok !== false,
+            status: res.status || 0,
+            statusText: String(res.status || ''),
+            headers: res.headers || {},
+            url: url,
+            json: function () {
+              if (!isText) { return Promise.resolve(res.data); }
+              try { return Promise.resolve(JSON.parse(text)); }
+              catch (e) { return Promise.reject(e); }
+            },
+            text: function () { return Promise.resolve(text); }
+          };
+          response.clone = function () { return response; };
+          return response;
+        });
+    };
+    window.fetch.__capyBridged = true;
+  })();
 
   /* --------------------------------------------------------------- html/dom */
   function jq() { return window.jQuery || window.$; }
@@ -291,9 +380,7 @@
     return cur;
   }
 
-  window.__capyInvoke = function (cbId, functionName, paramsJson) {
-    var params = {};
-    try { params = paramsJson ? JSON.parse(paramsJson) : {}; } catch (e) { params = {}; }
+  function runInvoke(cbId, functionName, invoke) {
     var done = function (ok, payload) {
       var text;
       try { text = JSON.stringify({ ok: ok, data: payload === undefined ? null : payload }); }
@@ -307,9 +394,26 @@
       return;
     }
     var out;
-    try { out = fn(params); } catch (e) { done(false, { error: String((e && e.message) || e) }); return; }
+    try { out = invoke(fn); } catch (e) { done(false, { error: String((e && e.message) || e) }); return; }
     Promise.resolve(out).then(function (value) { done(true, value === undefined ? null : value); },
       function (e) { done(false, { error: String((e && e.message) || e) }); });
+  }
+
+  /// 模块函数：参数是 params 对象（规范约定）
+  window.__capyInvoke = function (cbId, functionName, paramsJson) {
+    var params = {};
+    try { params = paramsJson ? JSON.parse(paramsJson) : {}; } catch (e) { params = {}; }
+    runInvoke(cbId, functionName, function (fn) { return fn(params); });
+  };
+
+  /// loadDetail：参数按规范是「链接字符串」，但部分宿主会传整个条目对象，
+  /// 组件侧两种写法都存在（有的直接当 URL 用，有的读 .detailUrl/.link）。
+  /// 调用方先传字符串，失败再回退传对象。
+  window.__capyInvokeArg = function (cbId, functionName, argJson) {
+    var arg = null;
+    try { arg = (argJson === undefined || argJson === null) ? null : JSON.parse(argJson); }
+    catch (e) { arg = null; }
+    runInvoke(cbId, functionName, function (fn) { return fn(arg); });
   };
 
   // 只读元数据（同步返回，给 runJavaScriptReturningResult 用）

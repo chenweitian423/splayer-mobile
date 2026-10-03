@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../runtime/plugin_engine.dart';
 import '../store/plugin_store.dart';
+import 'netlog_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -24,6 +25,15 @@ class SettingsPage extends StatelessWidget {
               leading: const Icon(Icons.extension_outlined),
               title: const Text('已安装组件'),
               trailing: Text('${records.length} 个（已装载 $loaded）'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('网络日志'),
+              subtitle: const Text('组件请求了什么、返回了什么（排障用）'),
+              trailing: Text('${PluginEngine.instance.allNetLogs().length} 条'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const NetLogPage()),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.cached),

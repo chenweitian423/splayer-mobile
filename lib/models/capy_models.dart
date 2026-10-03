@@ -394,6 +394,20 @@ class CapyModule {
   final List<CapyParam> params;
   final int cacheDuration;
 
+  static final RegExp _searchWord = RegExp(r'search|搜索|查找|搜片|检索', caseSensitive: false);
+  static final RegExp _historyWord = RegExp(r'history|继续观看|观看记录|播放记录|历史|收藏|favorite|bookmark', caseSensitive: false);
+  static const Set<String> _searchParamNames = <String>{
+    'keyword', 'query', 'q', 'wd', 'kw', 'key', 'searchkey', 'search_key',
+  };
+
+  /// 搜索型模块：标题/函数名带 search 字样，或声明了关键词类参数。
+  bool get looksLikeSearch =>
+      _searchWord.hasMatch('$id $title $functionName') ||
+      params.any((p) => _searchParamNames.contains(p.name.toLowerCase()));
+
+  /// 「我的/历史」型模块：第一屏放它通常是空的，不适合当首页。
+  bool get looksLikeHistory => _historyWord.hasMatch('$id $title $functionName');
+
   factory CapyModule.fromJson(Map json) {
     final params = <CapyParam>[];
     for (final p in _list(json['params'])) {
@@ -467,4 +481,20 @@ class WidgetMeta {
       searchFunctionName: searchFn,
     );
   }
+}
+
+/// 首页该用哪个模块。
+///
+/// 组件作者常把「搜索」放在 modules[0]（红果短剧、MissAV 都是这样），宿主若直接
+/// 拿第一个模块当首页，空关键词下必然得到空列表 —— 表现为首页一片空白。
+/// 这里按「非搜索非历史 → 非搜索 → 第一个」三级回退挑一个真正的列表模块。
+CapyModule? pickHomeModule(List<CapyModule> modules) {
+  if (modules.isEmpty) return null;
+  for (final module in modules) {
+    if (!module.looksLikeSearch && !module.looksLikeHistory) return module;
+  }
+  for (final module in modules) {
+    if (!module.looksLikeSearch) return module;
+  }
+  return modules.first;
 }

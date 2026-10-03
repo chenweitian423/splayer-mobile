@@ -30,6 +30,35 @@ class RuntimeException implements Exception {
   String toString() => message;
 }
 
+/// 一条网络请求记录（用于远程排障：组件到底请求了什么、返回了什么）。
+class NetLogEntry {
+  NetLogEntry({
+    required this.method,
+    required this.url,
+    required this.status,
+    required this.ms,
+    required this.ok,
+    required this.bytes,
+    required this.error,
+    required this.at,
+  });
+
+  final String method;
+  final String url;
+  final int status;
+  final int ms;
+  final bool ok;
+  final int bytes;
+  final String error;
+  final DateTime at;
+
+  String get line {
+    final flag = ok ? 'OK ' : 'ERR';
+    final tail = error.isEmpty ? '' : '  $error';
+    return '$flag $method $status ${ms}ms ${bytes}B$tail\n    $url';
+  }
+}
+
 /// 一个已装载的组件。
 class WidgetRuntime {
   WidgetRuntime(this.record);
@@ -45,10 +74,16 @@ class WidgetRuntime {
   String? _lastError;
   int _seq = 0;
   bool _disposed = false;
+  final List<NetLogEntry> _netLogs = <NetLogEntry>[];
+
+  static const int _maxNetLogs = 300;
 
   WidgetMeta? get meta => _meta;
   String? get lastError => _lastError;
   bool get isBooted => _booted;
+  List<NetLogEntry> get netLogs => List.unmodifiable(_netLogs);
+
+  void clearNetLogs() => _netLogs.clear();
 
   static String? _jquerySource;
   static String? _runtimeSource;
@@ -146,53 +181,59 @@ class WidgetRuntime {
     return params;
   }
 
-  Future<dynamic> _invoke(String functionName, Map<String, dynamic> params) async {
-    if (!_booted) throw RuntimeException('组件未装载：${record.title}');
-    final cbId = 'c${++_seq}';
-    final completer = Completer<dynamic>();
-    _pending[cbId] = completer;
-    final payload = jsonEncode(params);
-    await _controller.runJavaScript(
-      '__capyInvoke(${jsonEncode(cbId)}, ${jsonEncode(functionName)}, ${jsonEncode(payload)});',
+  Future<dynamic> _invoke(String functionName, Map<String, dynamic> params) {
+    return _invokeWith(
+      functionName,
+      '__capyInvoke(${jsonEncode('__CB__')}, ${jsonEncode(functionName)}, %s);',
+      jsonEncode(params),
     );
-    final result = await completer.future.timeout(
-      const Duration(seconds: 60),
-      onTimeout: () {
-        _pending.remove(cbId);
-        throw RuntimeException('调用 $functionName 超时');
-      },
+  }
+
+  /// loadDetail 的规范参数是「链接字符串」；但部分组件会在宿主传对象时读
+  /// `.detailUrl/.link`，所以先按规范传字符串，失败再回退成对象。
+  Future<CapyDetail> loadDetail(MediaItem item) async {
+    Object? firstError;
+    for (final argument in <Object?>[item.link, _detailArgument(item)]) {
+      try {
+        final raw = await _invokeWith(
+          'loadDetail',
+          '__capyInvokeArg(${jsonEncode('__CB__')}, ${jsonEncode('loadDetail')}, %s);',
+          jsonEncode(argument),
+        );
+        if (raw is Map && raw['ok'] == false) {
+          firstError ??= RuntimeException(_errorText(raw));
+          continue;
+        }
+        final data = raw is Map && raw.containsKey('data') ? raw['data'] : raw;
+        final detail = _parseDetail(data);
+        if (detail != null) return detail;
+        firstError ??= RuntimeException('loadDetail 返回结构无法解析');
+      } catch (e) {
+        firstError ??= e;
+      }
+    }
+    throw RuntimeException(
+      firstError is RuntimeException ? firstError.message : '${firstError ?? 'loadDetail 调用失败'}',
     );
-    return result;
   }
 
-  Future<List<MediaItem>> callList(CapyModule module, {Map<String, dynamic> overrides = const {}}) async {
-    final raw = await _invoke(module.functionName, buildParams(module, overrides: overrides));
-    if (raw is Map && raw['ok'] == false) {
-      throw RuntimeException(_errorText(raw));
-    }
-    final data = raw is Map && raw.containsKey('data') ? raw['data'] : raw;
-    return MediaItem.listFrom(data);
-  }
+  Map<String, dynamic> _detailArgument(MediaItem item) => <String, dynamic>{
+        'link': item.link,
+        'url': item.link,
+        'detailUrl': item.link,
+        'id': item.id,
+        'title': item.title,
+        'mediaType': item.mediaType,
+        'posterUrl': item.posterUrl,
+        'posterPath': item.posterUrl,
+        'backdropUrl': item.backdropUrl,
+        'backdropPath': item.backdropUrl,
+        'description': item.description,
+        'remark': item.remark,
+      };
 
-  Future<List<MediaItem>> search(String keyword, {int page = 1}) async {
-    final fn = _meta?.searchFunctionName.isNotEmpty == true ? _meta!.searchFunctionName : 'search';
-    final params = <String, dynamic>{'keyword': keyword, 'query': keyword, 'wd': keyword, 'page': page};
-    for (final p in _meta?.globalParams ?? const <CapyParam>[]) {
-      params[p.name] = p.defaultValue;
-    }
-    final raw = await _invoke(fn, params);
-    if (raw is Map && raw['ok'] == false) throw RuntimeException(_errorText(raw));
-    final data = raw is Map && raw.containsKey('data') ? raw['data'] : raw;
-    return MediaItem.listFrom(data);
-  }
-
-  Future<CapyDetail> loadDetail(String link) async {
-    final raw = await _invoke('loadDetail', <String, dynamic>{'link': link, 'url': link, 'id': link});
-    if (raw is Map && raw['ok'] == false) throw RuntimeException(_errorText(raw));
-    final data = raw is Map && raw.containsKey('data') ? raw['data'] : raw;
-    if (data is Map) {
-      return CapyDetail.fromJson(data.cast<String, dynamic>());
-    }
+  CapyDetail? _parseDetail(dynamic data) {
+    if (data is Map) return CapyDetail.fromJson(data.cast<String, dynamic>());
     if (data is List) {
       // 顶层数组 = 同一影片的多条线路
       final sources = <PlaySource>[];
@@ -200,9 +241,58 @@ class WidgetRuntime {
         final e = data[i];
         if (e is Map) sources.add(PlaySource.fromJson(e.cast<String, dynamic>(), i));
       }
-      return CapyDetail(title: '', playSources: sources);
+      return sources.isEmpty ? null : CapyDetail(title: '', playSources: sources);
     }
-    throw RuntimeException('loadDetail 返回结构无法解析');
+    return null;
+  }
+
+  Future<dynamic> _invokeWith(String functionName, String template, String encodedArgument) async {
+    if (!_booted) throw RuntimeException('组件未装载：${record.title}');
+    final cbId = 'c${++_seq}';
+    final completer = Completer<dynamic>();
+    _pending[cbId] = completer;
+    final expression = template.replaceFirst('__CB__', cbId).replaceFirst('%s', encodedArgument);
+    await _controller.runJavaScript(expression);
+    return completer.future.timeout(
+      const Duration(seconds: 60),
+      onTimeout: () {
+        _pending.remove(cbId);
+        throw RuntimeException('调用 $functionName 超时');
+      },
+    );
+  }
+
+  Future<List<MediaItem>> callList(CapyModule module, {Map<String, dynamic> overrides = const {}}) async {
+    final raw = await _invoke(module.functionName, buildParams(module, overrides: overrides));
+    if (raw is Map && raw['ok'] == false) {
+      throw RuntimeException('${record.title} · ${module.title}：${_errorText(raw)}');
+    }
+    final data = raw is Map && raw.containsKey('data') ? raw['data'] : raw;
+    return MediaItem.listFrom(data);
+  }
+
+  Future<List<MediaItem>> search(String keyword, {int page = 1}) async {
+    final fn = searchFunctionName;
+    final params = <String, dynamic>{'keyword': keyword, 'query': keyword, 'wd': keyword, 'page': page};
+    for (final p in _meta?.globalParams ?? const <CapyParam>[]) {
+      params[p.name] = p.defaultValue;
+    }
+    final raw = await _invoke(fn, params);
+    if (raw is Map && raw['ok'] == false) {
+      throw RuntimeException('${record.title} 搜索：${_errorText(raw)}');
+    }
+    final data = raw is Map && raw.containsKey('data') ? raw['data'] : raw;
+    return MediaItem.listFrom(data);
+  }
+
+  /// 搜索函数的解析顺序：元数据里声明的 search 段 → 看起来像搜索的模块 → search。
+  String get searchFunctionName {
+    final declared = _meta?.searchFunctionName ?? '';
+    if (declared.isNotEmpty) return declared;
+    for (final module in _meta?.modules ?? const <CapyModule>[]) {
+      if (module.looksLikeSearch) return module.functionName;
+    }
+    return 'search';
   }
 
   String _errorText(Map raw) {
@@ -260,6 +350,9 @@ class WidgetRuntime {
       case 'log':
         debugPrint('[capy:${record.title}] ${payload['level']}: ${payload['message']}');
         break;
+      case 'net':
+        _appendNetLog(payload);
+        break;
       case 'http':
         unawaited(_handleHttp(payload));
         break;
@@ -280,6 +373,24 @@ class WidgetRuntime {
         }
         break;
     }
+  }
+
+  void _appendNetLog(Map<String, dynamic> payload) {
+    _netLogs.add(NetLogEntry(
+      method: (payload['method'] ?? 'GET').toString(),
+      url: (payload['url'] ?? '').toString(),
+      status: (payload['status'] as num?)?.toInt() ?? 0,
+      ms: (payload['ms'] as num?)?.toInt() ?? 0,
+      ok: payload['ok'] == true,
+      bytes: (payload['bytes'] as num?)?.toInt() ?? 0,
+      error: (payload['error'] ?? '').toString(),
+      at: DateTime.now(),
+    ));
+    if (_netLogs.length > _maxNetLogs) {
+      _netLogs.removeRange(0, _netLogs.length - _maxNetLogs);
+    }
+    final entry = _netLogs.last;
+    debugPrint('[capy:${record.title}] net ${entry.line}');
   }
 
   Future<void> _handleHttp(Map<String, dynamic> payload) async {

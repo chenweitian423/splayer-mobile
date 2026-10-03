@@ -95,4 +95,84 @@ void main() {
       expect(found.any((f) => f!.endsWith('.png')), isFalse);
     });
   });
+
+  group('首页模块选择（红果/MissAV 第一个模块是搜索）', () {
+    WidgetMeta build(List<Map<String, dynamic>> modules) =>
+        WidgetMeta.fromJson(<String, dynamic>{'title': 'x', 'modules': modules});
+
+    test('跳过搜索型模块，顺延到下一个', () {
+      final meta = build(<Map<String, dynamic>>[
+        <String, dynamic>{
+          'title': '搜索短剧',
+          'functionName': 'searchHongguo',
+          'params': <dynamic>[
+            <String, dynamic>{'name': 'keyword', 'type': 'input'},
+          ],
+        },
+        <String, dynamic>{'title': '继续观看', 'functionName': 'getHongguoHistory'},
+        <String, dynamic>{'title': '短剧', 'functionName': 'getHongguoShort'},
+      ]);
+      final picked = pickHomeModule(meta.modules);
+      // 搜索被跳过；「继续观看」这类历史列表首屏必空，也跳过 → 落到真正的列表
+      expect(picked?.functionName, 'getHongguoShort');
+    });
+
+    test('全是搜索型时退化为第一个，不返回空', () {
+      final meta = build(<Map<String, dynamic>>[
+        <String, dynamic>{'title': '搜索影片', 'functionName': 'searchVideos'},
+      ]);
+      expect(pickHomeModule(meta.modules)?.functionName, 'searchVideos');
+    });
+
+    test('正常组件取第一个模块', () {
+      final meta = build(<Map<String, dynamic>>[
+        <String, dynamic>{'title': '推荐', 'functionName': 'getProviderHome'},
+        <String, dynamic>{'title': '最新', 'functionName': 'getProviderCategory'},
+      ]);
+      expect(pickHomeModule(meta.modules)?.functionName, 'getProviderHome');
+    });
+
+    test('识别搜索型：函数名带 search 或声明了关键词参数', () {
+      final byName = WidgetMeta.fromJson(<String, dynamic>{
+        'title': 'x',
+        'modules': <dynamic>[
+          <String, dynamic>{'title': '找片', 'functionName': 'searchProvider'},
+        ],
+      }).modules.single;
+      final byParam = WidgetMeta.fromJson(<String, dynamic>{
+        'title': 'x',
+        'modules': <dynamic>[
+          <String, dynamic>{
+            'title': '找片',
+            'functionName': 'doQuery',
+            'params': <dynamic>[
+              <String, dynamic>{'name': 'keyword', 'type': 'input'},
+            ],
+          },
+        ],
+      }).modules.single;
+      expect(byName.looksLikeSearch, isTrue);
+      expect(byParam.looksLikeSearch, isTrue);
+    });
+
+    test('搜索函数解析：优先用元数据声明，其次按模块猜', () {
+      final declared = WidgetMeta.fromJson(<String, dynamic>{
+        'title': 'x',
+        'modules': <dynamic>[],
+        'search': <String, dynamic>{'functionName': 'searchVideos'},
+      });
+      expect(declared.searchFunctionName, 'searchVideos');
+
+      final guessed = WidgetMeta.fromJson(<String, dynamic>{
+        'title': 'x',
+        'modules': <dynamic>[
+          <String, dynamic>{'title': '搜索短剧', 'functionName': 'searchHongguo'},
+        ],
+      });
+      // 没有 search 段时，靠模块特征也能认出搜索函数
+      expect(guessed.searchFunctionName, '');
+      expect(guessed.modules.single.looksLikeSearch, isTrue);
+      expect(pickHomeModule(guessed.modules)?.functionName, 'searchHongguo');
+    });
+  });
 }

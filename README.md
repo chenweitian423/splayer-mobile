@@ -19,6 +19,22 @@
 | `Widget.tmdb.get` | ❌ | 需要 TMDB API Key，未内置 |
 | `loadDetail` → `videoUrl` / `playSources` / `seasons` / `episodeItems` | ✅ | `lib/ui/detail_page.dart` |
 | `globalParams` 合并进每个模块参数 | ✅ | `WidgetRuntime.buildParams` |
+| WebView 内的 `fetch` 也走原生通道 | ✅ | 消掉壳 origin 引起的 CORS（组件「Widget.http 优先 + fetch 兜底」的双通道写法才真正可用） |
+
+### 两个必须知道的组件约定（踩过坑）
+
+| 约定 | 事实 | 我们的处理 |
+|---|---|---|
+| `loadDetail(link)` 的参数 | **必须是字符串**。实测 8 支组件全部吃字符串，其中 5 支（51吃瓜/帝果/黄豆/剧果/野果）会把参数**直接当 URL** 用 —— 传对象就变成 `[object Object]`，详情页挂掉、无法播放 | 先按规范传字符串；失败再回退传条目对象（红果/黄果/MissAV 支持对象写法） |
+| 首页该取哪个模块 | 组件常把**搜索**放在 `modules[0]`（红果、MissAV 都是），空关键词下必然返回空列表 → 首页一片空白 | `pickHomeModule()` 三级回退：非搜索非历史 → 非搜索 → 第一个 |
+
+换组件后先用冒烟工具验一遍契约：
+
+```bash
+node tools/widget-smoke.mjs <组件目录> [关键词]
+```
+
+它会真跑每个模块并断言「宿主只允许给组件传字符串 URL」，把这类事故挡在装包之前。
 
 每个组件跑在**独立的 WebView** 里（原 TV 版是所有插件共用一个上下文，同名内部函数会互相覆盖），互不干扰、可单独卸载。
 
@@ -32,6 +48,8 @@ lib/
   runtime/plugin_engine.dart    运行时池，并把 WebView 挂在屏幕外保活
   store/plugin_store.dart       组件落盘 / 导入 / 托管页扫描
   ui/                           首页 · 分类 · 详情 · 播放 · 插件管理 · 搜索 · 设置
+  ui/netlog_page.dart           网络日志（每个请求的 URL/状态/耗时，排障用）
+tools/widget-smoke.mjs          组件契约冒烟测试（Node 沙箱真跑外部组件）
 assets/runtime/
   capy_runtime.js               注入到 WebView 的 window.Widget
   jquery.min.js                 Widget.html.load 的 DOM 引擎
