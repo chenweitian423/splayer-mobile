@@ -3,7 +3,10 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:splayer_mobile/models/capy_models.dart';
+import 'package:splayer_mobile/runtime/widget_runtime.dart';
 import 'package:splayer_mobile/store/plugin_store.dart';
+
+import 'dart:convert';
 
 void main() {
   group('WidgetMetadata 解析', () {
@@ -173,6 +176,56 @@ void main() {
       expect(guessed.searchFunctionName, '');
       expect(guessed.modules.single.looksLikeSearch, isTrue);
       expect(pickHomeModule(guessed.modules)?.functionName, 'searchHongguo');
+    });
+  });
+
+  group('桥接表达式编码（真机上「组件传入的是 null」的根因）', () {
+    test('第三个实参必须是「承载 JSON 文本的 JS 字符串字面量」', () {
+      final params = <String, dynamic>{'page': 1, 'serverUrl': 'https://happy-capy.garland.indevs.in'};
+      final argumentJson = jsonEncode(params);
+      final expression = buildInvokeExpression(
+        entry: '__capyInvoke',
+        callbackId: 'c1',
+        functionName: 'getProviderHome',
+        argumentJson: argumentJson,
+      );
+
+      // 期望形态：__capyInvoke("c1", "getProviderHome", "{\"page\":1,...}");
+      expect(
+        expression,
+        equals('__capyInvoke("c1", "getProviderHome", ${jsonEncode(argumentJson)});'),
+      );
+      // 少一层编码（把 JSON 文本直接当 JS 字面量）就会长成这样，组件侧 JSON.parse 必抛
+      expect(expression, isNot(contains(', $argumentJson);')));
+    });
+
+    test('字符串参数（loadDetail 的 link）同样要二次编码', () {
+      const url = 'https://happy-capy.garland.indevs.in/api/v1/providers/hongguo/items/abc?x=1';
+      final expression = buildInvokeExpression(
+        entry: '__capyInvokeArg',
+        callbackId: 'c2',
+        functionName: 'loadDetail',
+        argumentJson: jsonEncode(url),
+      );
+      expect(expression, equals('__capyInvokeArg("c2", "loadDetail", ${jsonEncode(jsonEncode(url))});'));
+      // 还原链：JS 取到第三个字面量 → JSON.parse → 得到原 URL
+      final literal = expression.substring(expression.indexOf('"loadDetail", ') + '"loadDetail", '.length);
+      final jsString = jsonDecode(literal.replaceAll(RegExp(r'\);$'), '')) as String;
+      expect(jsonDecode(jsString), url);
+    });
+
+    test('带引号与反斜杠的参数不会破坏表达式', () {
+      final messy = <String, dynamic>{'keyword': '他说"hi"\\n', 'page': 1};
+      final argumentJson = jsonEncode(messy);
+      final expression = buildInvokeExpression(
+        entry: '__capyInvoke',
+        callbackId: 'c3',
+        functionName: 'search',
+        argumentJson: argumentJson,
+      );
+      final literal = expression.substring(expression.indexOf('"search", ') + '"search", '.length);
+      final jsString = jsonDecode(literal.replaceAll(RegExp(r'\);$'), '')) as String;
+      expect(jsonDecode(jsString), messy);
     });
   });
 }

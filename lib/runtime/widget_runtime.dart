@@ -23,6 +23,21 @@ const String kRuntimeBaseUrl = 'https://capy.local/';
 const String kDefaultUserAgent =
     'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
 
+/// 组装发给 WebView 的调用表达式。
+///
+/// ★ 编码层次不能省：[argumentJson] 是 JSON 文本，必须再经一次 [jsonEncode]
+/// 变成 JS 字符串字面量。少这一层，JS 收到的就是对象/裸串，
+/// `JSON.parse` 抛错 → 组件拿到 null（真机表现为
+/// `URL 非法：组件传入的是 null`，所有组件一起挂）。
+String buildInvokeExpression({
+  required String entry,
+  required String callbackId,
+  required String functionName,
+  required String argumentJson,
+}) {
+  return '$entry(${jsonEncode(callbackId)}, ${jsonEncode(functionName)}, ${jsonEncode(argumentJson)});';
+}
+
 class RuntimeException implements Exception {
   RuntimeException(this.message);
   final String message;
@@ -182,11 +197,7 @@ class WidgetRuntime {
   }
 
   Future<dynamic> _invoke(String functionName, Map<String, dynamic> params) {
-    return _invokeWith(
-      functionName,
-      '__capyInvoke(${jsonEncode('__CB__')}, ${jsonEncode(functionName)}, %s);',
-      jsonEncode(params),
-    );
+    return _run('__capyInvoke', functionName, jsonEncode(params));
   }
 
   /// loadDetail 的规范参数是「链接字符串」；但部分组件会在宿主传对象时读
@@ -195,11 +206,7 @@ class WidgetRuntime {
     Object? firstError;
     for (final argument in <Object?>[item.link, _detailArgument(item)]) {
       try {
-        final raw = await _invokeWith(
-          'loadDetail',
-          '__capyInvokeArg(${jsonEncode('__CB__')}, ${jsonEncode('loadDetail')}, %s);',
-          jsonEncode(argument),
-        );
+        final raw = await _run('__capyInvokeArg', 'loadDetail', jsonEncode(argument));
         if (raw is Map && raw['ok'] == false) {
           firstError ??= RuntimeException(_errorText(raw));
           continue;
@@ -246,12 +253,23 @@ class WidgetRuntime {
     return null;
   }
 
-  Future<dynamic> _invokeWith(String functionName, String template, String encodedArgument) async {
+  /// 调一次组件里的全局函数。
+  ///
+  /// [argumentJson] 是「JSON 文本」（对象写法的 params，或字符串写法的 loadDetail 参数）。
+  /// 组装表达式时必须再过一次 [jsonEncode]，把它变成 JS 字符串字面量 ——
+  /// 只编码一层会让 JS 侧拿到对象/裸串，`JSON.parse` 抛错后组件收到 null
+  /// （真机上表现为 `URL 非法：组件传入的是 null`，红果/黄果/5 支 provider 全挂）。
+  Future<dynamic> _run(String entry, String functionName, String argumentJson) async {
     if (!_booted) throw RuntimeException('组件未装载：${record.title}');
     final cbId = 'c${++_seq}';
     final completer = Completer<dynamic>();
     _pending[cbId] = completer;
-    final expression = template.replaceFirst('__CB__', cbId).replaceFirst('%s', encodedArgument);
+    final expression = buildInvokeExpression(
+      entry: entry,
+      callbackId: cbId,
+      functionName: functionName,
+      argumentJson: argumentJson,
+    );
     await _controller.runJavaScript(expression);
     return completer.future.timeout(
       const Duration(seconds: 60),

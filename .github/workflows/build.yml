@@ -25,6 +25,11 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
+      # 桥接层契约：把真实 capy_runtime.js 装进 Node 沙箱，验证组件实际收到的参数。
+      # 这一关挡的是「参数编码少一层 → 组件收到 null → 全线报 URL 非法」这类事故。
+      - name: 桥接层契约测试
+        run: node tools/runtime-contract-test.mjs
+
   android:
     name: Android APK
     needs: analyze

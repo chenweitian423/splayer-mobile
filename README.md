@@ -21,20 +21,20 @@
 | `globalParams` 合并进每个模块参数 | ✅ | `WidgetRuntime.buildParams` |
 | WebView 内的 `fetch` 也走原生通道 | ✅ | 消掉壳 origin 引起的 CORS（组件「Widget.http 优先 + fetch 兜底」的双通道写法才真正可用） |
 
-### 两个必须知道的组件约定（踩过坑）
+### 三个必须知道的组件约定（踩过坑）
 
 | 约定 | 事实 | 我们的处理 |
 |---|---|---|
 | `loadDetail(link)` 的参数 | **必须是字符串**。实测 8 支组件全部吃字符串，其中 5 支（51吃瓜/帝果/黄豆/剧果/野果）会把参数**直接当 URL** 用 —— 传对象就变成 `[object Object]`，详情页挂掉、无法播放 | 先按规范传字符串；失败再回退传条目对象（红果/黄果/MissAV 支持对象写法） |
 | 首页该取哪个模块 | 组件常把**搜索**放在 `modules[0]`（红果、MissAV 都是），空关键词下必然返回空列表 → 首页一片空白 | `pickHomeModule()` 三级回退：非搜索非历史 → 非搜索 → 第一个 |
+| 桥接参数编码层次 | 值 → `jsonEncode`（JSON 文本）→ `jsonEncode`（JS 字符串字面量），**三层缺一不可**。少一层，JS 的 `JSON.parse` 拿到的不是字符串，参数静默变 `{}`/`null` —— 真机现象是「所有组件一起报 `组件传入的是 null`」 | 统一走 `buildInvokeExpression()`，由单测与 Node 契约测试双重把关 |
 
-换组件后先用冒烟工具验一遍契约：
+换组件或改桥接层后，先跑这两个工具（CI 也会跑第二个）：
 
 ```bash
-node tools/widget-smoke.mjs <组件目录> [关键词]
+node tools/widget-smoke.mjs <组件目录> [关键词]   # 真跑外部组件，断言宿主只传字符串 URL
+node tools/runtime-contract-test.mjs               # 装真实运行时，断言组件实际收到的参数
 ```
-
-它会真跑每个模块并断言「宿主只允许给组件传字符串 URL」，把这类事故挡在装包之前。
 
 每个组件跑在**独立的 WebView** 里（原 TV 版是所有插件共用一个上下文，同名内部函数会互相覆盖），互不干扰、可单独卸载。
 
@@ -50,6 +50,7 @@ lib/
   ui/                           首页 · 分类 · 详情 · 播放 · 插件管理 · 搜索 · 设置
   ui/netlog_page.dart           网络日志（每个请求的 URL/状态/耗时，排障用）
 tools/widget-smoke.mjs          组件契约冒烟测试（Node 沙箱真跑外部组件）
+tools/runtime-contract-test.mjs 桥接层契约测试（Node 沙箱装真实运行时，CI 会跑）
 assets/runtime/
   capy_runtime.js               注入到 WebView 的 window.Widget
   jquery.min.js                 Widget.html.load 的 DOM 引擎
