@@ -1,0 +1,40 @@
+name: splayer_mobile
+description: "SPlayer Mobile —— 组件化播放器（clean-room 复刻，兼容 CapyPlayer / Forward Widget 组件规范）"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # 组件运行时
+  webview_flutter: ^4.10.0          # JS 沙箱宿主
+  http: ^1.2.2                      # 原生侧 HTTP（绕开 WebView 的 CORS / UA 限制）
+
+  # 播放
+  video_player: ^2.9.2              # Android: ExoPlayer / iOS: AVPlayer
+
+  # 存储与系统能力
+  shared_preferences: ^2.3.3
+  path_provider: ^2.1.5
+  file_picker: ^8.1.7               # 本地 js 导入
+  cached_network_image: ^3.4.1
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/runtime/jquery.min.js
+    - assets/runtime/capy_runtime.js
