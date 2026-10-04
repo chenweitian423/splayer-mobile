@@ -10,6 +10,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
@@ -120,14 +121,21 @@ class WidgetRuntime {
     );
   }
 
-  /// 外壳就绪的单次等待上限；失败会再给一次机会（低端机首帧 WebView 很慢）。
-  static const Duration _shellTimeout = Duration(seconds: 30);
-  static const int _shellAttempts = 2;
+  /// 外壳就绪的单次等待上限。原来这里是 30s × 2 次重试 —— 实测那会把
+  /// 「加载不出来」从 20 秒拉长到 60 秒，反而更像「卡死」。恢复单次 20s。
+  static const Duration _shellTimeout = Duration(seconds: 20);
+  static const Duration _stepTimeout = Duration(seconds: 20);
+
+  /// 当前卡在哪一步（超时错误里带出来，便于远程定位）。
+  String _stage = '未开始';
 
   bool _channelReady = false;
 
+  String get stage => _stage;
+
   Future<void> boot() async {
     if (_booted) return;
+    _stage = '加载运行时资源';
     _jquerySource ??= await rootBundle.loadString('assets/runtime/jquery.min.js');
     _runtimeSource ??= await rootBundle.loadString('assets/runtime/capy_runtime.js');
 
@@ -141,36 +149,37 @@ class WidgetRuntime {
       _channelReady = true;
     }
 
-    // 阶段一：等外壳就绪。这一阶段受设备性能影响，值得重试。
-    Object? lastError;
-    var shellReady = _shellReady.isCompleted;
-    for (var attempt = 0; attempt < _shellAttempts && !shellReady; attempt++) {
-      try {
-        await _controller.loadHtmlString(_buildShell(), baseUrl: kRuntimeBaseUrl);
-        await _shellReady.future.timeout(_shellTimeout);
-        shellReady = true;
-      } catch (e) {
-        lastError = e;
-        debugPrint('[capy:${record.title}] 外壳就绪第 ${attempt + 1} 次失败：$e');
-      }
-    }
-    if (!shellReady) {
-      throw RuntimeException('运行时初始化超时（WebView 未就绪）：$lastError');
-    }
+    // ★ 关键：先让宿主把 WebView 挂上界面树。
+    //   没挂上时 `loadHtmlString` 可能**永远不返回**（平台侧找不到对应实例），
+    //   于是装载既不成功也不失败 —— 表现就是首页一直转圈、也没有任何错误日志。
+    //   `endOfFrame` 会主动安排一帧并等到帧尾，等两次更稳妥。
+    _stage = '等待宿主挂载 WebView';
+    await SchedulerBinding.instance.endOfFrame;
+    await SchedulerBinding.instance.endOfFrame;
+    if (_disposed) throw RuntimeException('组件已卸载');
 
-    // 阶段二：注入组件源码。这一阶段失败基本是组件自身的问题，不重试。
+    _stage = '加载运行时外壳';
+    await _controller.loadHtmlString(_buildShell(), baseUrl: kRuntimeBaseUrl).timeout(_stepTimeout);
+
+    _stage = '等待运行时就绪';
+    await _shellReady.future.timeout(_shellTimeout);
+
+    // 组件源码在运行时之后注入，保证 window.Widget 已存在
+    _stage = '注入组件脚本';
     try {
-      await _controller.runJavaScript(record.source);
+      await _controller.runJavaScript(record.source).timeout(_stepTimeout);
     } catch (e) {
       throw RuntimeException('组件脚本注入失败：$e');
     }
 
     // 声明宿主播放内核：组件若把播放模式写死成 mpv，会向后端要 mpv 专用清单，
     // 系统播放器（AVPlayer/ExoPlayer）解析不了 —— 这里改成本宿主支持的内核。
+    _stage = '声明宿主播放内核';
     try {
-      await _controller.runJavaScript('__capyApplyHostPlayerMode("hls");');
+      await _controller.runJavaScript('__capyApplyHostPlayerMode("hls");').timeout(_stepTimeout);
     } catch (_) {}
 
+    _stage = '读取组件元数据';
     final metaJson = await _evalString('__capyMetadata()');
     if (metaJson == null || metaJson == 'null' || metaJson.isEmpty) {
       throw RuntimeException('该脚本未声明全局 WidgetMetadata');
@@ -183,6 +192,7 @@ class WidgetRuntime {
     if (_meta!.modules.isEmpty && _meta!.searchFunctionName.isEmpty) {
       throw RuntimeException('WidgetMetadata 里没有任何可用模块');
     }
+    _stage = '完成';
     _booted = true;
   }
 
@@ -361,7 +371,8 @@ class WidgetRuntime {
 
   Future<String?> _evalString(String expression) async {
     try {
-      final result = await _controller.runJavaScriptReturningResult(expression);
+      // 也加超时：WebView 异常时这个调用同样可能永不返回。
+      final result = await _controller.runJavaScriptReturningResult(expression).timeout(_stepTimeout);
       return _normalizeJsResult(result);
     } catch (e) {
       _lastError = e.toString();

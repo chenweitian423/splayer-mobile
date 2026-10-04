@@ -4,9 +4,13 @@
 /// 而不是用 Offstage（Offstage 会让 WebView 被 suspend，定时器/回调失灵）。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
+import '../store/error_log.dart';
 import '../store/plugin_store.dart';
+import 'boot_gate.dart';
 import 'widget_runtime.dart';
 
 class PluginEngine extends ChangeNotifier {
@@ -14,19 +18,20 @@ class PluginEngine extends ChangeNotifier {
 
   static final PluginEngine instance = PluginEngine._();
 
-  /// 同时启动的 WebView 上限。
-  ///
-  /// 8 支组件一起 `boot()` 时，低端机/内存吃紧的机器会出现
-  /// 「运行时初始化超时」甚至被系统杀进程 —— 实测后端把「组件未加载」
-  /// 这类反馈归因到这一层。限流后逐个排队启动，稳得多。
+  /// 同时启动的 WebView 上限（低端机一起启动容易超时/被系统回收）。
   static const int maxConcurrentBoots = 3;
+
+  /// 单次装载的整体兜底。
+  ///
+  /// ★ 这个看门狗是**必需**的：`WebView` 的某些调用（挂载前的 `loadHtmlString`）
+  /// 可能**永远不返回**，没有它就会既不成功也不失败 —— 首页一直转圈、还没日志。
+  static const Duration bootWatchdog = Duration(seconds: 75);
 
   final Map<String, WidgetRuntime> _runtimes = <String, WidgetRuntime>{};
   final Map<String, Future<WidgetRuntime>> _booting = <String, Future<WidgetRuntime>>{};
   final Map<String, String> _errors = <String, String>{};
 
-  int _bootingCount = 0;
-
+  final BootGate _bootGate = BootGate(maxConcurrentBoots);
   String errorOf(String pluginId) => _errors[pluginId] ?? '';
 
   bool isReady(String pluginId) => _runtimes[pluginId]?.isBooted == true;
@@ -44,8 +49,7 @@ class PluginEngine extends ChangeNotifier {
     final inflight = _booting[record.id];
     if (inflight != null) return inflight;
 
-    // 上一次启动失败留下的实例：先摘掉并释放。
-    // 不释放的话，每次重试都会多留一个 WebView（泄漏 → 内存持续上涨）。
+    // 上一次启动失败留下的实例：先摘掉并释放，否则每次重试都会多留一个 WebView。
     if (existing != null) {
       _runtimes.remove(record.id);
       existing.dispose();
@@ -53,7 +57,7 @@ class PluginEngine extends ChangeNotifier {
 
     final runtime = WidgetRuntime(record);
     _runtimes[record.id] = runtime;
-    final future = _bootThrottled(runtime)
+    final future = _bootQueued(runtime)
         .then((WidgetRuntime value) {
           _errors.remove(record.id);
           notifyListeners();
@@ -61,6 +65,8 @@ class PluginEngine extends ChangeNotifier {
         })
         .catchError((Object error) {
           _errors[record.id] = error.toString();
+          // 也写进错误日志：组件装载失败是用户最容易遇到、又最难描述的问题。
+          ErrorLog.instance.add('装载', '${record.title}：$error', null);
           // 失败的实例立刻从池子里摘掉并释放，避免它一直挂在界面树上。
           if (identical(_runtimes[record.id], runtime)) {
             _runtimes.remove(record.id);
@@ -75,17 +81,19 @@ class PluginEngine extends ChangeNotifier {
     return future;
   }
 
-  /// 排队启动：最多 [maxConcurrentBoots] 个同时在跑。
-  Future<WidgetRuntime> _bootThrottled(WidgetRuntime runtime) async {
-    while (_bootingCount >= maxConcurrentBoots) {
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
-    _bootingCount++;
+  /// 排队启动：名额由 [BootGate] 管理（直接交接给队首，不轮询）。
+  Future<WidgetRuntime> _bootQueued(WidgetRuntime runtime) async {
+    await _bootGate.acquire();
     try {
-      await runtime.boot();
+      await runtime.boot().timeout(
+        bootWatchdog,
+        onTimeout: () => throw RuntimeException(
+          '组件「${runtime.record.title}」装载超时（卡在：${runtime.stage}）',
+        ),
+      );
       return runtime;
     } finally {
-      _bootingCount--;
+      _bootGate.release();
     }
   }
 
