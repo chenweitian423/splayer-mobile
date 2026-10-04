@@ -120,27 +120,45 @@ class WidgetRuntime {
     );
   }
 
+  /// 外壳就绪的单次等待上限；失败会再给一次机会（低端机首帧 WebView 很慢）。
+  static const Duration _shellTimeout = Duration(seconds: 30);
+  static const int _shellAttempts = 2;
+
+  bool _channelReady = false;
+
   Future<void> boot() async {
     if (_booted) return;
     _jquerySource ??= await rootBundle.loadString('assets/runtime/jquery.min.js');
     _runtimeSource ??= await rootBundle.loadString('assets/runtime/capy_runtime.js');
 
-    _controller
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..setUserAgent(kDefaultUserAgent)
-      ..addJavaScriptChannel(kBridgeName, onMessageReceived: _onBridgeMessage);
-
-    final shell = _buildShell();
-    await _controller.loadHtmlString(shell, baseUrl: kRuntimeBaseUrl);
-
-    try {
-      await _shellReady.future.timeout(const Duration(seconds: 20));
-    } catch (_) {
-      throw RuntimeException('运行时初始化超时（WebView 未就绪）');
+    // JS 通道只能注册一次（重复 add 会叠加同名列）。
+    if (!_channelReady) {
+      _controller
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(const Color(0x00000000))
+        ..setUserAgent(kDefaultUserAgent)
+        ..addJavaScriptChannel(kBridgeName, onMessageReceived: _onBridgeMessage);
+      _channelReady = true;
     }
 
-    // 组件源码在运行时之后注入，保证 window.Widget 已存在
+    // 阶段一：等外壳就绪。这一阶段受设备性能影响，值得重试。
+    Object? lastError;
+    var shellReady = _shellReady.isCompleted;
+    for (var attempt = 0; attempt < _shellAttempts && !shellReady; attempt++) {
+      try {
+        await _controller.loadHtmlString(_buildShell(), baseUrl: kRuntimeBaseUrl);
+        await _shellReady.future.timeout(_shellTimeout);
+        shellReady = true;
+      } catch (e) {
+        lastError = e;
+        debugPrint('[capy:${record.title}] 外壳就绪第 ${attempt + 1} 次失败：$e');
+      }
+    }
+    if (!shellReady) {
+      throw RuntimeException('运行时初始化超时（WebView 未就绪）：$lastError');
+    }
+
+    // 阶段二：注入组件源码。这一阶段失败基本是组件自身的问题，不重试。
     try {
       await _controller.runJavaScript(record.source);
     } catch (e) {
@@ -274,7 +292,7 @@ class WidgetRuntime {
   /// 只编码一层会让 JS 侧拿到对象/裸串，`JSON.parse` 抛错后组件收到 null
   /// （真机上表现为 `URL 非法：组件传入的是 null`，红果/黄果/5 支 provider 全挂）。
   Future<dynamic> _run(String entry, String functionName, String argumentJson) async {
-    if (!_booted) throw RuntimeException('组件未装载：${record.title}');
+    if (!_booted) throw RuntimeException('组件「${record.title}」尚未装载完成，请稍后重试');
     final cbId = 'c${++_seq}';
     final completer = Completer<dynamic>();
     _pending[cbId] = completer;

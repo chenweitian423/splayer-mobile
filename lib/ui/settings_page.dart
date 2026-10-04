@@ -5,13 +5,32 @@ import 'package:flutter/material.dart';
 
 import '../runtime/plugin_engine.dart';
 import '../store/app_settings.dart';
+import '../store/error_log.dart';
 import '../store/history_store.dart';
 import '../store/plugin_store.dart';
+import '../store/update_service.dart';
+import 'error_log_page.dart';
 import 'history_page.dart';
 import 'netlog_page.dart';
+import 'update_flow.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    UpdateService.instance.currentVersion().then((value) {
+      if (mounted) setState(() => _version = value);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +41,7 @@ class SettingsPage extends StatelessWidget {
         PluginEngine.instance,
         HistoryStore.instance,
         AppSettings.instance,
+        ErrorLog.instance,
       ]),
       builder: (context, _) {
         final records = PluginStore.instance.records;
@@ -33,6 +53,29 @@ class SettingsPage extends StatelessWidget {
               leading: const Icon(Icons.extension_outlined),
               title: const Text('已安装组件'),
               trailing: Text('${records.length} 个（已装载 $loaded）'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.system_update_alt),
+              title: const Text('检查更新'),
+              subtitle: const Text('从 GitHub Release 下载新版 APK 并调起安装器'),
+              trailing: Text(_version.isEmpty ? '' : 'v$_version'),
+              onTap: () => checkAndUpdate(context),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.update),
+              title: const Text('启动时自动检查更新'),
+              subtitle: const Text('只提示，不会自动安装'),
+              value: AppSettings.instance.autoCheckUpdate,
+              onChanged: (value) => AppSettings.instance.setAutoCheckUpdate(value),
+            ),
+            ListTile(
+              leading: const Icon(Icons.bug_report_outlined),
+              title: const Text('错误日志'),
+              subtitle: const Text('闪退/异常记录，可一键复制发回排查'),
+              trailing: Text('${ErrorLog.instance.count} 条'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const ErrorLogPage()),
+              ),
             ),
             SwitchListTile(
               secondary: const Icon(Icons.playlist_play),

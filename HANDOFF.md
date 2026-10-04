@@ -11,16 +11,15 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.8 已发布**（tag `v1.0.8` → Release，挂 APK 55.5MB + 未签名 IPA 23.7MB）；上一版 v1.0.7 |
+> | 版本 | **v1.0.9（待发布）**：Android 在线更新 + 正式签名 + 装载健壮性 + 错误日志；上一发布 v1.0.8 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
-> | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
-> | 校验 | v1.0.8 容器内：`flutter analyze` **零问题**、Dart 单测 **51/51**（paging 6 + poster_image 5 + history 7 + layout 7 + autoplay 5）；Node 契约 **17/17** |
-> | 真机进度 | v1.0.4 分页 ✅、v1.0.5 三项（分区保活/进度条/封面图）✅；**MissAV 封面确认无解、暂时放弃**；v1.0.6/7/8 待复验 |
-> | 自适应 | 宽 >= 600dp（横屏/平板）自动切**左侧导航栏**，内容限宽 1100dp；海报行高随可用高度收缩（150~210） |
-> | 设置项 | 自动连播下一集（`AppSettings`，落盘 shared_preferences）；播放页底栏也有一键开关 |
+> | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1）；**同时启动上限 3 个** |
+> | 校验 | v1.0.9 容器内：`flutter analyze` **零问题**、Dart 单测 **58/58**；Node 契约 **17/17** |
+> | 签名 | ★ 已配 4 个 GitHub Secrets，CI 用**同一把 release key** 出包（此前是 CI 临时 debug key，会变） |
+> | 真机进度 | v1.0.4 分页 ✅、v1.0.5 三项 ✅；MissAV 封面放弃；v1.0.6~v1.0.9 待复验 |
 > | 底部导航 | 首页 / 搜索 / 历史 / 插件 / 设置（5 个标签） |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 16:35（v1.0.8：剧集自动连播） |
+> | 最后更新 | 2026-10-04 18:10（v1.0.9：在线更新 / 正式签名 / 装载健壮性 / 错误日志） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
@@ -32,11 +31,12 @@
 > ```
 >
 > **③ 下一步待办（按优先级）**
-> 1. **真机复测 v1.0.8 自动连播**：播一部多集剧，结局时应自动接下一集并飘提示「自动播放下一集：第 N 集」；最后一集停下并提示「已经是最后一集」。底栏 `playlist_play` 图标可一键开关（设置页也有）。**注意**：电影的多线路不会自动跳（那不是「剧集」，自动跳会变成换线路）。
-> 2. **真机复测 v1.0.7**（若还没验）：全屏按钮 / 横竖屏按钮 / 转横屏后底部导航变左侧 / 退出播放页恢复竖屏与状态栏。
-> 3. **真机复测 v1.0.6**：进度记忆续播 + 历史页删除/清空。
-> 4. **MissAV 封面**已确认无解（后端无代理、CDN 客户端不可达），**暂时放弃**；若以后想救，只能靠客户端网络能到 `fourhoi.com`/`spic2-*.71352.men`。
-> 5. 待补能力：`Widget.tmdb`、`sectionMode`、字幕/弹幕面板、收藏夹、TV 大屏布局、跳过片头片尾。
+> 1. **首次装 v1.0.9 必须卸载重装**：签名从「CI 临时 debug key」换成了**固定 release key**，旧包无法直接覆盖安装（会提示「应用未安装」）。**只此一次**，之后 v1.0.9 → 后续版本就能在设置页「检查更新」里直接升级了。
+> 2. **备份签名材料**：`.signing/`（keystore + 密码 + alias）**丢了就再也无法覆盖升级**，必须复制到安全处。已同步到 GitHub Secrets。
+> 3. **真机复测 v1.0.9**：① 设置页「检查更新」→ 应能查到 v1.0.9 并下载安装（或提示已是最新）；② 播放页全屏**不再有**「点屏幕呼出控制条」那条提示；③ 若再闪退，设置页「错误日志」→ 复制发我。
+> 4. **真机复测 v1.0.8/7/6**：自动连播、全屏/横竖屏、进度记忆、历史页。
+> 5. MissAV 封面已放弃。
+> 6. 待补能力：`Widget.tmdb`、`sectionMode`、字幕/弹幕面板、收藏夹、TV 大屏布局、跳过片头片尾。
 >
 > **④ 铁律（踩过的坑）**
 > - **不要试图 1:1 反编译还原**：原 TV 版是 Kotlin+Compose 编译产物（78MB / 13 dex / R8 混淆），Compose 编译期变换不可逆。只做 clean-room（同规范、同模型、同能力）。
@@ -52,6 +52,10 @@
 > - **自适应只用一处断点常量**：`lib/ui/layout.dart` —— `kRailBreakpoint = 600`（宽 ≥ 600dp 用左侧导航栏）+ `posterRowHeight/posterCardWidth`（海报行随可用高度收缩到 150~210）。别在各页面各写一套魔法数字。
 > - ★ **自动连播只在「剧集」模式生效**：`PlayerPage.episodes` 是统一队列 —— 剧集是「集」，电影是「多个线路」。自动跳对后者等于**换线路**，是错的。判定统一走 `shouldAutoAdvance()`（`lib/models/play_queue.dart`），并由详情页传 `episodeList: true/false`。
 > - **播完判定要防重入**：`_onTick` 每帧都跑，靠 `_completionHandled` 一次性标记；`_load()` 里必须把它重置回 false，否则切下一集后不会再触发。
+> - ★★ **启动失败的运行实例必须立刻从池子里摘掉并 `dispose()`**：旧 `runtimeFor` 会在覆盖 `_runtimes[id]` 时**不释放旧实例** → 每次重试都多留一个 WebView（泄漏 → 内存持续上涨 → 闪退）。同时 `runtimeIfReady` 名字叫 ready 却从不检查 `isBooted`。
+> - ★★ **WebView 启动要限流**：8 支组件一起 `boot()` 时，低端机会「运行时初始化超时」甚至被系统杀进程（对应反馈里的「组件未加载」）。`PluginEngine.maxConcurrentBoots = 3` 排队启动；`boot()` 外壳就绪阶段 30s × 2 次重试（组件源码注入阶段不重试，那是组件自身的问题）。
+> - **release 包异常是静默的**：必须装 `ErrorLog.install()`（`FlutterError.onError` + `PlatformDispatcher.onError`）落盘到 `<appDocs>/error.log`，设置页可一键复制 —— 否则用户只能说「闪退」，拿不到堆栈。
+> - ★ **换了签名 key 就必须卸载重装一次**：debug key → release key 属于不同签名，系统直接拒绝覆盖安装。**keystore 丢了就永久失去覆盖升级能力**，务必多处备份。
 > - ★★ **封面图要带浏览器 UA**：`CachedNetworkImage` 默认发 Dart 的 UA，封面 CDN 会挡。统一走 `lib/ui/poster_image.dart`（UA + `Accept: image/*`；失败再带 Referer 重试一次，优先用 `WidgetRuntime.imageReferer` —— 即组件自己请求站点时用的那个 Referer）。
 > - **MissAV 封面没有后端图片代理**：provider 类组件（51吃瓜/帝果/黄豆/剧果/野果/黄果）的封面由后端**代理好**（`/api/v1/providers/{id}/cover?url=…`，实测 200）；MissAV 只有 `/api/v1/missav/cover-probe`（只返回解析后的 CDN 直链，不代理），客户端必须自己能连上 `fourhoi.com` / `spic2-*.71352.men`。连不上就是网络/内容源侧的问题。
 > - **观看历史的粒度是「媒体 × 剧集」**：`watchEpisodeKey(target, 剧集标题)`；媒体级 key = `pluginId::mediaId`（同一部剧的「继续观看」靠它找最近一条）。记录存在 `<appDocs>/history.json`，上限 500 条，超了丢最旧的。
@@ -86,6 +90,31 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · v1.0.9 Android 在线更新 + 正式签名 + 装载健壮性 + 错误日志
+
+用户：① 全屏底部那条「点屏幕呼出控制条」提示碍事（挡住字幕），去掉；② 做 Android 在线更新，并解决签名问题；③ 安卓退出后再进会闪退；④ 部分用户提示「组件未加载」。
+
+**① 去掉全屏提示** —— 删掉 `player_page.dart` 里 `!_controlsVisible` 时那条 `Positioned` 文字即可（全屏控制条仍是点屏幕呼出/收起）。
+
+**② 在线更新 + 签名（关键）**
+- **先解决签名**，否则更新包根本装不上去：仓库此前**没有配任何 secrets**，CI 一直在用**临时 debug 签名**（每次跑出来的 key 都可能不同 / 上游镜像一换就变）。
+- 生成 release keystore（`keytool`，RSA2048 / 有效期 10000 天 / alias `splayer`），落盘在 **`.signing/`**（已加 gitignore），并把 4 个 GitHub Secrets 配好：`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` / `ANDROID_STORE_PASSWORD`。
+- ⚠️ **换 key 后必须卸载重装一次**（签名不一致系统会拒绝覆盖安装）；`.signing/` 丢了就永久失去覆盖升级能力，务必备份。
+- 新增 `lib/store/update_service.dart`：查 `releases/latest` → 比对版本（数字比较，`1.0.10 > 1.0.9`）→ 下载 APK。**下载优先走 `api.github.com` 的资产接口**（`/releases/assets/{id}` + `Accept: application/octet-stream`）—— 实测本机对 `github.com` 主站时断时续，浏览器下载地址经常 000。
+- 新增 `lib/ui/update_flow.dart`：说明弹窗（版本/大小/更新内容）→ 带百分比的下载弹窗 → `OpenFilex.open()` 调起系统安装器。
+- 设置页加「检查更新」（显示当前版本）+「启动时自动检查更新」开关；启动后延迟 4 秒静默检查（避免和首屏 WebView 抢资源）。Manifest 加 `REQUEST_INSTALL_PACKAGES`。
+
+**③④ 闪退 / 组件未加载 —— 两个真 bug**
+- **WebView 泄漏**：`runtimeFor` 在启动失败后会把旧实例留在 `_runtimes` 里，**再次调用时直接覆盖且不 dispose** → 每次重试多留一个 WebView → 内存持续上涨 → 闪退。现在失败即「摘掉 + dispose」，覆盖前也先释放旧实例。
+- **同时启动太多**：8 支组件一起 `boot()`，低端机必然超时或被系统杀。新增 `PluginEngine.maxConcurrentBoots = 3` 排队启动。
+- `boot()` 拆成两阶段：外壳就绪（受设备性能影响）**30s × 2 次重试**；组件源码注入阶段失败不重试（那是组件自身问题）。
+- `runtimeIfReady` 名字叫 ready 却从不检查 `isBooted` → 已修正（避免拿到未装载的实例后报「组件未装载」）。
+- 报错文案改为可行动：「组件「X」尚未装载完成，请稍后重试」。
+- **新增错误日志**：`lib/store/error_log.dart`（`FlutterError.onError` + `PlatformDispatcher.onError` → `<appDocs>/error.log`）+ `lib/ui/error_log_page.dart`（一键复制/清空），设置页入口。release 包异常本来静默，有了它才能定位闪退。
+
+**新增测试** `test/update_test.dart`（7 条：版本解析与数字比较）。版本 `1.0.8+9` → `1.0.9+10`。
+验证：容器 analyze 零问题、Dart **58/58**、Node 契约 **17/17**。
 
 ### 2026-10-04 · v1.0.8 剧集自动连播
 

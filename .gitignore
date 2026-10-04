@@ -47,6 +47,14 @@ app.*.map.json
 # 本机现场资产（逆向产物，不入库）
 _recon/
 
+# Android 签名材料（绝不入库；正式签名走 GitHub Secrets）
+/android/key.properties
+/android/app/upload-keystore.jks
+*.jks
+*.keystore
+/android/app/*.jks
+/.signing/
+
 # 工作空间本地数据
 .workbuddy/
 NEW-CHAT-PROMPT.md

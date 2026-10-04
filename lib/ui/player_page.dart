@@ -528,16 +528,6 @@ class _PlayerPageState extends State<PlayerPage> {
                   ),
                 ),
               ),
-            // 呼出控制层的提示（隐藏时点屏幕任意处）
-            if (!_controlsVisible)
-              const Positioned(
-                left: 0,
-                right: 0,
-                bottom: 16,
-                child: Center(
-                  child: Text('点屏幕呼出控制条', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                ),
-              ),
           ],
         ),
       );

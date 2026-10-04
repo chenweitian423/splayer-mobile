@@ -2,7 +2,7 @@ name: splayer_mobile
 description: "SPlayer Mobile —— 组件化播放器（clean-room 复刻，兼容 CapyPlayer / Forward Widget 组件规范）"
 publish_to: 'none'
 
-version: 1.0.8+9
+version: 1.0.9+10
 
 environment:
   sdk: ^3.8.0
@@ -26,6 +26,8 @@ dependencies:
   file_picker: ^8.1.7               # 本地 js 导入
   cached_network_image: ^3.4.1
   url_launcher: ^6.3.1
+  package_info_plus: ^8.1.1         # 读取当前版本号（在线更新用）
+  open_filex: ^4.5.0                # 调起系统安装器安装新 APK
 
 dev_dependencies:
   flutter_test:

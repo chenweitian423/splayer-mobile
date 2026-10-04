@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'runtime/plugin_engine.dart';
 import 'store/app_settings.dart';
+import 'store/error_log.dart';
 import 'store/history_store.dart';
 import 'store/plugin_store.dart';
 import 'ui/history_page.dart';
@@ -16,9 +17,13 @@ import 'ui/layout.dart';
 import 'ui/plugin_manager_page.dart';
 import 'ui/search_page.dart';
 import 'ui/settings_page.dart';
+import 'ui/update_flow.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 先把错误钩子装上：后面任何初始化异常都能被记下来。
+  ErrorLog.instance.install();
+  await ErrorLog.instance.load();
   await PluginStore.instance.load();
   await HistoryStore.instance.load();
   await AppSettings.instance.load();
@@ -73,6 +78,20 @@ class _RootShellState extends State<RootShell> {
   ];
 
   void _select(int value) => setState(() => _index = value);
+
+  @override
+  void initState() {
+    super.initState();
+    // 启动后延一会儿再查更新：别和首屏那批 WebView 抢资源。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoCheckUpdate());
+  }
+
+  Future<void> _autoCheckUpdate() async {
+    if (!AppSettings.instance.autoCheckUpdate) return;
+    await Future<void>.delayed(const Duration(seconds: 4));
+    if (!mounted) return;
+    await checkAndUpdate(context, silent: true);
+  }
 
   @override
   Widget build(BuildContext context) {
