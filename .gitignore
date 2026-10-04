@@ -44,8 +44,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# 本机现场资产（逆向产物，不入库）
+# 本机现场资产与交接文档（只留本地，不入库）
 _recon/
+HANDOFF.md
 
 # Android 签名材料（绝不入库；正式签名走 GitHub Secrets）
 /android/key.properties

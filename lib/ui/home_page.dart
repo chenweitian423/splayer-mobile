@@ -116,6 +116,29 @@ class _PluginSectionState extends State<_PluginSection> with AutomaticKeepAliveC
     _boot();
   }
 
+  /// 取运行时。失败会自动再试一次 —— 「第一次用完关掉、再打开就有组件未装载」
+  /// 多半是重开时 WebView 还忙着导致的偶发失败，重试一次通常就好了。
+  ///
+  /// ★ 外层还套了超时：**无论引擎内部卡在哪一步，分区都不会无声转圈**，
+  ///   要么出内容、要么出可点的错误（v1.0.9 那次「一直转圈还没日志」就是缺这层兜底）。
+  Future<WidgetRuntime> _runtimeWithRetry() async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await PluginEngine.instance.runtimeFor(widget.record).timeout(
+              const Duration(seconds: 90),
+              onTimeout: () => throw Exception('装载超时（90 秒无响应）'),
+            );
+      } catch (e) {
+        lastError = e;
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 800));
+        }
+      }
+    }
+    throw Exception('$lastError');
+  }
+
   Future<void> _boot() async {
     final cached = _homeSectionCache[_cacheKey];
     final hasCache = cached != null && cached.isNotEmpty;
@@ -128,7 +151,7 @@ class _PluginSectionState extends State<_PluginSection> with AutomaticKeepAliveC
     });
     try {
       // runtimeFor 命中已有运行时是零成本；即使重建也只是重新注入脚本，不打网络。
-      final runtime = await PluginEngine.instance.runtimeFor(widget.record);
+      final runtime = await _runtimeWithRetry();
       final module = pickHomeModule(runtime.meta?.modules ?? const <CapyModule>[]);
       if (module == null) {
         throw RuntimeException('组件未声明任何可用模块');
@@ -141,7 +164,12 @@ class _PluginSectionState extends State<_PluginSection> with AutomaticKeepAliveC
 
       if (hasCache) return; // 有缓存就不重复请求首屏
 
-      final items = await runtime.callList(module, overrides: <String, dynamic>{'page': 1});
+      final items = await runtime
+          .callList(module, overrides: <String, dynamic>{'page': 1})
+          .timeout(
+            const Duration(seconds: 60),
+            onTimeout: () => throw Exception('内容加载超时（60 秒无响应）'),
+          );
       if (!mounted) return;
       _homeSectionCache[_cacheKey] = items;
       setState(() {
@@ -334,7 +362,12 @@ class _ModuleListState extends State<_ModuleList> {
       _error = '';
     });
     try {
-      final items = await widget.runtime.callList(widget.module, overrides: <String, dynamic>{'page': _page});
+      final items = await widget.runtime
+          .callList(widget.module, overrides: <String, dynamic>{'page': _page})
+          .timeout(
+            const Duration(seconds: 60),
+            onTimeout: () => throw Exception('内容加载超时（60 秒无响应）'),
+          );
       if (!mounted) return;
       setState(() {
         final merged = mergePage(_items, items, _itemKey);

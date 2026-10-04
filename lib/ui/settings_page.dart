@@ -132,7 +132,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const ListTile(
               leading: Icon(Icons.info_outline),
               title: Text('SPlayer Mobile'),
-              subtitle: Text('clean-room 复刻 · 组件运行时兼容 CapyPlayer / Forward Widget 规范\n'
+              subtitle: Text('组件运行时兼容 CapyPlayer / Forward Widget 规范\n'
                   '本应用只提供播放器与运行时，不内置、不提供任何内容源。'),
               isThreeLine: true,
             ),

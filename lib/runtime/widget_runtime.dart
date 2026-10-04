@@ -10,7 +10,6 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
@@ -121,65 +120,49 @@ class WidgetRuntime {
     );
   }
 
-  /// 外壳就绪的单次等待上限。原来这里是 30s × 2 次重试 —— 实测那会把
-  /// 「加载不出来」从 20 秒拉长到 60 秒，反而更像「卡死」。恢复单次 20s。
-  static const Duration _shellTimeout = Duration(seconds: 20);
-  static const Duration _stepTimeout = Duration(seconds: 20);
-
-  /// 当前卡在哪一步（超时错误里带出来，便于远程定位）。
-  String _stage = '未开始';
-
-  bool _channelReady = false;
-
-  String get stage => _stage;
+  /// 外壳就绪的等待上限。
+  ///
+  /// ★ 这里刻意**保持 v1.0.8 的形态**（单次 await + 单次超时）。
+  /// v1.0.9/v1.0.10 我在这个函数里加过「重试 / endOfFrame 等待 / 逐步超时 / 限流」，
+  /// 结果首页所有分区一直转圈且**不报错**（v1.0.8 完全正常）——
+  /// 说明改动本身引入了新的卡死路径。现在一律回退，只在**确实需要**的地方
+  /// 保留超时（见 `_evalString`），保证「不成功就报错」。
+  static const Duration _shellTimeout = Duration(seconds: 25);
+  static const Duration _evalTimeout = Duration(seconds: 15);
 
   Future<void> boot() async {
     if (_booted) return;
-    _stage = '加载运行时资源';
     _jquerySource ??= await rootBundle.loadString('assets/runtime/jquery.min.js');
     _runtimeSource ??= await rootBundle.loadString('assets/runtime/capy_runtime.js');
 
-    // JS 通道只能注册一次（重复 add 会叠加同名列）。
-    if (!_channelReady) {
-      _controller
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(const Color(0x00000000))
-        ..setUserAgent(kDefaultUserAgent)
-        ..addJavaScriptChannel(kBridgeName, onMessageReceived: _onBridgeMessage);
-      _channelReady = true;
+    _controller
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0x00000000))
+      ..setUserAgent(kDefaultUserAgent)
+      ..addJavaScriptChannel(kBridgeName, onMessageReceived: _onBridgeMessage);
+
+    final shell = _buildShell();
+    await _controller.loadHtmlString(shell, baseUrl: kRuntimeBaseUrl);
+
+    try {
+      await _shellReady.future.timeout(_shellTimeout);
+    } catch (_) {
+      throw RuntimeException('运行时初始化超时（WebView 未就绪）');
     }
 
-    // ★ 关键：先让宿主把 WebView 挂上界面树。
-    //   没挂上时 `loadHtmlString` 可能**永远不返回**（平台侧找不到对应实例），
-    //   于是装载既不成功也不失败 —— 表现就是首页一直转圈、也没有任何错误日志。
-    //   `endOfFrame` 会主动安排一帧并等到帧尾，等两次更稳妥。
-    _stage = '等待宿主挂载 WebView';
-    await SchedulerBinding.instance.endOfFrame;
-    await SchedulerBinding.instance.endOfFrame;
-    if (_disposed) throw RuntimeException('组件已卸载');
-
-    _stage = '加载运行时外壳';
-    await _controller.loadHtmlString(_buildShell(), baseUrl: kRuntimeBaseUrl).timeout(_stepTimeout);
-
-    _stage = '等待运行时就绪';
-    await _shellReady.future.timeout(_shellTimeout);
-
     // 组件源码在运行时之后注入，保证 window.Widget 已存在
-    _stage = '注入组件脚本';
     try {
-      await _controller.runJavaScript(record.source).timeout(_stepTimeout);
+      await _controller.runJavaScript(record.source);
     } catch (e) {
       throw RuntimeException('组件脚本注入失败：$e');
     }
 
     // 声明宿主播放内核：组件若把播放模式写死成 mpv，会向后端要 mpv 专用清单，
     // 系统播放器（AVPlayer/ExoPlayer）解析不了 —— 这里改成本宿主支持的内核。
-    _stage = '声明宿主播放内核';
     try {
-      await _controller.runJavaScript('__capyApplyHostPlayerMode("hls");').timeout(_stepTimeout);
+      await _controller.runJavaScript('__capyApplyHostPlayerMode("hls");');
     } catch (_) {}
 
-    _stage = '读取组件元数据';
     final metaJson = await _evalString('__capyMetadata()');
     if (metaJson == null || metaJson == 'null' || metaJson.isEmpty) {
       throw RuntimeException('该脚本未声明全局 WidgetMetadata');
@@ -192,7 +175,6 @@ class WidgetRuntime {
     if (_meta!.modules.isEmpty && _meta!.searchFunctionName.isEmpty) {
       throw RuntimeException('WidgetMetadata 里没有任何可用模块');
     }
-    _stage = '完成';
     _booted = true;
   }
 
@@ -371,8 +353,9 @@ class WidgetRuntime {
 
   Future<String?> _evalString(String expression) async {
     try {
-      // 也加超时：WebView 异常时这个调用同样可能永不返回。
-      final result = await _controller.runJavaScriptReturningResult(expression).timeout(_stepTimeout);
+      // 只在这一步加超时：注入完成后若还拿不到结果，说明脚本自身有问题，
+      // 直接让 boot() 失败（报错文案明确），比无限等下去好。
+      final result = await _controller.runJavaScriptReturningResult(expression).timeout(_evalTimeout);
       return _normalizeJsResult(result);
     } catch (e) {
       _lastError = e.toString();

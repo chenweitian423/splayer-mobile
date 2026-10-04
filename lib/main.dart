@@ -1,4 +1,4 @@
-/// SPlayer Mobile —— clean-room 复刻的组件化播放器。
+/// SPlayer Mobile —— 组件化播放器。
 ///
 /// 运行时兼容 CapyPlayer / Forward Widget 规范：`WidgetMetadata` + 全局
 /// `functionName` + `Widget.http` / `Widget.html` / `Widget.dom` + `loadDetail`。
