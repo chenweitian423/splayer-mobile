@@ -11,7 +11,7 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.6（待发布）**：新增播放进度记忆 + 观看历史；上一发布 v1.0.5 |
+> | 版本 | **v1.0.6 已发布**（tag `v1.0.6` → Release，挂 APK 55.4MB + 未签名 IPA 23.7MB）；上一版 v1.0.5 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
 > | 校验 | v1.0.6 容器内：`flutter analyze` **零问题**、Dart 单测 **39/39**（paging 6 + poster_image 5 + history 7）；Node 契约 **17/17** |
@@ -102,6 +102,13 @@
 **新增测试** `test/history_test.dart`（7 条）：剧集 key 生成、progress 夹取、98% 判定、<5s 不续播、JSON 往返、缺字段容错。
 
 版本 `1.0.5+6` → `1.0.6+7`。验证：容器 analyze 零问题、Dart **39/39**、Node 契约 **17/17**。
+
+**已发布 Release `v1.0.6`**（tag 指向 `4faef71`，CI run `37185488375` 四 job 全绿）
+<https://github.com/chenweitian423/splayer-mobile/releases/tag/v1.0.6>
+- `SPlayerMobile-v1.0.6-android.apk` 55.4 MB sha256 `191ddae0…47f8`
+- `SPlayerMobile-v1.0.6-ios-unsigned.ipa` 23.7 MB sha256 `17488214…b712`
+
+本地产物：`F:\codex项目\播放器app\build\release\v1.0.6\`（sha256 已与 Release 核对一致）。
 
 ### 2026-10-04 · v1.0.5 首页保活 / 进度条可拖 / 封面图请求头 / MissAV 链路核对
 
