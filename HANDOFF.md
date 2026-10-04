@@ -3,27 +3,27 @@
 > ## ⚡ 启动包
 >
 > **① 一句话启动语**
-> `接着做 SPlayer Mobile 项目：先读 C:\Users\47403\WorkBuddy\2026-10-03-23-40-41\splayer_mobile\HANDOFF.md 顶部的「⚡ 启动包」，照它继续。`
+> `接着做 SPlayer Mobile 项目：先读 F:\codex项目\播放器app\HANDOFF.md 顶部的「⚡ 启动包」，照它继续。`
 >
 > **② 当前状态快照**
 >
 > | 项 | 值 |
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
-> | 本地工程 | `C:\Users\47403\WorkBuddy\2026-10-03-23-40-41\splayer_mobile` |
-> | 版本 | **v1.0.3**（tag 已推，Release 挂 APK + 未签名 IPA；HEAD = `fe5fa48`，与 origin/main 同步） |
+> | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
+> | 版本 | **v1.0.3**（tag 已推，Release 挂 APK + 未签名 IPA；迁移文档已 commit，本地领先 origin/main 1 个提交、待 push） |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
 > | 校验 | `flutter analyze` 零问题、Dart 单测 **21/21**、Node 桥接契约 **17/17**（CI 全绿，四 job：analyze/android/ios/release） |
 > | 真机进度 | iOS 装 v1.0.2 实测：8 支组件都能进详情、多数组件可播；**v1.0.3（MissAV 播放 + 播放器三件套）待用户真机复验** |
-> | 现场资产 | 逆向产物都在 **`C:\Users\47403\WorkBuddy\2026-10-03-23-40-41\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 13:25（刷新启动包） |
+> | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
+> | 最后更新 | 2026-10-04 13:30（工程迁移到新空间 `F:\codex项目\播放器app`，路径与复跑命令已同步） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
 > export MSYS_NO_PATHCONV=1
-> cd C:/Users/47403/WorkBuddy/2026-10-03-23-40-41
-> docker run --rm -v "$PWD:/work" -v splayer_pub_cache:/root/.pub-cache -w /work/splayer_mobile \
+> cd "F:/codex项目/播放器app"
+> docker run --rm -v "$PWD:/work" -v splayer_pub_cache:/root/.pub-cache -w /work \
 >   ghcr.io/cirruslabs/flutter:3.32.0 bash -lc \
 >   "flutter pub get && flutter analyze && flutter test && node tools/runtime-contract-test.mjs"
 > ```
@@ -69,6 +69,16 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · 工程迁移到 F:\codex项目\播放器app（新工作空间）
+
+原来的工程在 `C:\Users\47403\WorkBuddy\2026-10-03-23-40-41\splayer_mobile`（临时工作目录）。按用户要求整体迁到固定的工作空间，**今后只在这里开发**。
+
+- **新布局**：工作空间根 = Flutter 工程根（`pubspec.yaml` / `lib/` / `android/` / `ios/` / `assets/` / `tools/` 直接位于根下），不再有 `splayer_mobile` 子目录。
+- **迁移内容**：整个 git 仓库（含 `.git` 历史与 remote，HEAD `cbf6de1` 不变）、`_recon/`（逆向现场资产）、`.workbuddy/memory/`（10-03、10-04 日志）。
+- **未迁移**：`build/`(941M)、`.dart_tool/`(52M) —— 可再生，需要时跑一次 `flutter pub get` / 构建即可；正式校验走容器（持久 pub 缓存卷）。
+- **.gitignore 追加** `_recon/` 与 `.workbuddy/`，保证 `git status` 干净、现场资产不入库。
+- **启动语** 已更新为：`接着做 SPlayer Mobile 项目：先读 F:\codex项目\播放器app\HANDOFF.md 顶部的「⚡ 启动包」，照它继续。`
 
 ### 2026-10-04 · v1.0.3 MissAV 播放不了 + 播放器补齐选集/竖滑/倍速
 

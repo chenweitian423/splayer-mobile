@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 本机现场资产（逆向产物，不入库）
+_recon/
+
+# 工作空间本地数据
+.workbuddy/
+NEW-CHAT-PROMPT.md
