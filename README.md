@@ -2,11 +2,11 @@
 
 手机端的组件化播放器（Android / iOS）， SPlayer 的能力面：把 `.js` 组件当脚本跑在沙箱里，宿主负责网络、解析、播放。
 
-> **不是反编译产物。** 原 TV 版是 Kotlin + Compose 的编译产物（78MB / 13 个 dex / R8 混淆），没有源码、没有 assets，Compose 的编译期代码变换不可逆，所以"1:1 还原同一份工程"在工程上不成立。这里做的是：**同一套组件规范、同一套数据模型、同样的能力**，UI 按手机重做 —— 因此原生态的 `.js` 组件可以直接复用。
+> **不是反编译产物。** 这里做的是：**同一套组件规范、同一套数据模型、同样的能力**，UI 按手机重做 —— 因此原生态的 `.js` 组件可以直接复用。
 
 ## 组件规范兼容性
 
-运行时实现了 CapyPlayer / Forward Widget 规范（这套规范同时被 Forward、CapyPlayer、SPlayer TV 使用）：
+运行时实现了 CapyPlayer / Forward Widget 规范（这套规范同时被 Forward、CapyPlayer 使用）：
 
 | 能力 | 状态 | 实现位置 |
 |---|---|---|
