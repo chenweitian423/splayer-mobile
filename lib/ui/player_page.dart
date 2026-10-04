@@ -51,6 +51,12 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _showEpisodeHint = false;
   String _hintText = '';
 
+  // ---- 全屏 / 方向 ----
+  bool _fullscreen = false;
+  bool _landscape = false;
+  bool _controlsVisible = true;
+  Timer? _hideTimer;
+
   List<PlayCandidate> get _candidates => <PlayCandidate>[
         ...widget.episodes[_index].candidates,
         ...widget.fallbacks.expand((item) => item.candidates),
@@ -173,6 +179,8 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
+    _hideTimer?.cancel();
+    _restoreSystemChrome();
     // 退出时立刻记一次最终位置（读取是同步的，之后再销毁控制器）。
     final controller = _controller;
     if (controller != null && controller.value.isInitialized) {
@@ -217,6 +225,58 @@ class _PlayerPageState extends State<PlayerPage> {
     Future<void>.delayed(const Duration(milliseconds: 1400), () {
       if (mounted) setState(() => _showEpisodeHint = false);
     });
+  }
+
+  /* --------------------------------------------------------- 方向 / 全屏 */
+
+  Future<void> _applyOrientation() async {
+    await SystemChrome.setPreferredOrientations(
+      _landscape
+          ? const <DeviceOrientation>[DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
+          : const <DeviceOrientation>[DeviceOrientation.portraitUp],
+    );
+  }
+
+  /// 只切换横竖屏，不动全屏状态。
+  Future<void> _toggleOrientation() async {
+    setState(() => _landscape = !_landscape);
+    await _applyOrientation();
+    _scheduleHide();
+  }
+
+  /// 进入/退出全屏：全屏时隐藏系统栏与 AppBar，默认转横屏。
+  Future<void> _toggleFullscreen() async {
+    final next = !_fullscreen;
+    setState(() {
+      _fullscreen = next;
+      _controlsVisible = true;
+      if (next) _landscape = true; // 全屏默认横屏
+    });
+    await _applyOrientation();
+    await SystemChrome.setEnabledSystemUIMode(
+      next ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
+    if (next) _scheduleHide();
+  }
+
+  void _toggleControls() {
+    setState(() => _controlsVisible = !_controlsVisible);
+    if (_controlsVisible) _scheduleHide();
+  }
+
+  /// 全屏时控制层 5 秒无操作自动隐藏。
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    if (!_fullscreen) return;
+    _hideTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _controlsVisible = false);
+    });
+  }
+
+  /// 退出播放页时恢复系统 UI（方向锁放开、状态栏回来）。
+  void _restoreSystemChrome() {
+    unawaited(SystemChrome.setPreferredOrientations(const <DeviceOrientation>[]));
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
   }
 
   String _fmt(Duration d) {
@@ -305,6 +365,117 @@ class _PlayerPageState extends State<PlayerPage> {
     final controller = _controller;
     final ready = controller != null && controller.value.isInitialized;
     final total = widget.episodes.length;
+
+    // ★ 手势层只包住「视频区」，控制条放在它外面 —— 否则整屏的
+    //   onVerticalDragEnd 会和进度条的横向拖拽抢手势，进度条根本拖不动。
+    final videoArea = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // 全屏时点一下视频呼出/收起控制层。
+      onTap: _fullscreen ? _toggleControls : null,
+      // 上下滑切集（上滑下一集 / 下滑上一集）
+      onVerticalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (velocity < -250) {
+          _switchEpisode(1);
+        } else if (velocity > 250) {
+          _switchEpisode(-1);
+        }
+      },
+      child: Stack(
+        children: <Widget>[
+          Center(
+            child: _error.isNotEmpty && !ready
+                ? _ErrorView(
+                    error: _error,
+                    url: _triedUrl,
+                    onRetry: () => _load(candidateIndex: 0),
+                    onSwitchSource: _openSourceSheet,
+                    onCopy: _copyError,
+                  )
+                : _initializing
+                    ? const CircularProgressIndicator()
+                    : AspectRatio(
+                        aspectRatio: ready ? controller.value.aspectRatio : 16 / 9,
+                        child: ready ? VideoPlayer(controller) : const SizedBox.shrink(),
+                      ),
+          ),
+          if (_showEpisodeHint)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 24,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(_hintText, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    // ---- 全屏：没有 AppBar / 底部栏，控制层浮在视频上 ----
+    if (_fullscreen) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: <Widget>[
+            Positioned.fill(child: videoArea),
+            if (_controlsVisible)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[Colors.transparent, Color(0xCC000000)],
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        _FullscreenActions(
+                          episodeLabel: widget.episodes.length > 1 ? '选集 ${_index + 1}/${widget.episodes.length}' : null,
+                          onEpisodes: widget.episodes.length > 1 ? _openEpisodeSheet : null,
+                          sourceLabel: _candidates.length > 1 ? '线路 ${_candidateIndex + 1}/${_candidates.length}' : null,
+                          onSources: _candidates.length > 1 ? _openSourceSheet : null,
+                          speedLabel: '${_speed}x',
+                          onSpeed: _openSpeedSheet,
+                          onOrientation: _toggleOrientation,
+                          landscape: _landscape,
+                          onExitFullscreen: _toggleFullscreen,
+                        ),
+                        if (ready) _Controls(controller: controller, fmt: _fmt, transparent: true),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            // 呼出控制层的提示（隐藏时点屏幕任意处）
+            if (!_controlsVisible)
+              const Positioned(
+                left: 0,
+                right: 0,
+                bottom: 16,
+                child: Center(
+                  child: Text('点屏幕呼出控制条', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -314,63 +485,18 @@ class _PlayerPageState extends State<PlayerPage> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: <Widget>[
+          IconButton(
+            tooltip: _landscape ? '切换为竖屏' : '切换为横屏',
+            onPressed: _toggleOrientation,
+            icon: Icon(_landscape ? Icons.stay_current_portrait : Icons.stay_current_landscape),
+          ),
+          IconButton(tooltip: '全屏', onPressed: _toggleFullscreen, icon: const Icon(Icons.fullscreen)),
           IconButton(tooltip: '用系统播放器打开', onPressed: _openExternally, icon: const Icon(Icons.open_in_new)),
         ],
       ),
-      // ★ 手势层只包住「视频区」，控制条放在它外面 —— 否则全屏的
-      //   onVerticalDragEnd 会和进度条的横向拖拽抢手势，进度条根本拖不动。
       body: Column(
         children: <Widget>[
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              // 上下滑切集（上滑下一集 / 下滑上一集）
-              onVerticalDragEnd: (details) {
-                final velocity = details.primaryVelocity ?? 0;
-                if (velocity < -250) {
-                  _switchEpisode(1);
-                } else if (velocity > 250) {
-                  _switchEpisode(-1);
-                }
-              },
-              child: Stack(
-                children: <Widget>[
-                  Center(
-                    child: _error.isNotEmpty && !ready
-                        ? _ErrorView(
-                            error: _error,
-                            url: _triedUrl,
-                            onRetry: () => _load(candidateIndex: 0),
-                            onSwitchSource: _openSourceSheet,
-                            onCopy: _copyError,
-                          )
-                        : _initializing
-                            ? const CircularProgressIndicator()
-                            : AspectRatio(
-                                aspectRatio: ready ? controller.value.aspectRatio : 16 / 9,
-                                child: ready ? VideoPlayer(controller) : const SizedBox.shrink(),
-                              ),
-                  ),
-                  if (_showEpisodeHint)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      top: 24,
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.72),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(_hintText, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+          Expanded(child: videoArea),
           if (ready) _Controls(controller: controller, fmt: _fmt),
         ],
       ),
@@ -510,16 +636,19 @@ class _EpisodeSheet extends StatelessWidget {
 }
 
 class _Controls extends StatelessWidget {
-  const _Controls({required this.controller, required this.fmt});
+  const _Controls({required this.controller, required this.fmt, this.transparent = false});
 
   final VideoPlayerController controller;
   final String Function(Duration) fmt;
+
+  /// 全屏时用半透明底（浮在视频上）。
+  final bool transparent;
 
   @override
   Widget build(BuildContext context) {
     final value = controller.value;
     return Container(
-      color: Colors.black,
+      color: transparent ? Colors.transparent : Colors.black,
       padding: const EdgeInsets.fromLTRB(4, 2, 12, 2),
       child: Row(
         children: <Widget>[
@@ -590,6 +719,61 @@ class _ScrubberState extends State<_Scrubber> {
           await widget.controller.seekTo(Duration(milliseconds: v.round()));
           if (mounted) setState(() => _dragValue = null);
         },
+      ),
+    );
+  }
+}
+
+/// 全屏时浮在视频上的辅助操作行（选集 / 线路 / 倍速 / 方向 / 退出全屏）。
+class _FullscreenActions extends StatelessWidget {
+  const _FullscreenActions({
+    required this.episodeLabel,
+    required this.onEpisodes,
+    required this.sourceLabel,
+    required this.onSources,
+    required this.speedLabel,
+    required this.onSpeed,
+    required this.onOrientation,
+    required this.landscape,
+    required this.onExitFullscreen,
+  });
+
+  final String? episodeLabel;
+  final VoidCallback? onEpisodes;
+  final String? sourceLabel;
+  final VoidCallback? onSources;
+  final String speedLabel;
+  final VoidCallback onSpeed;
+  final VoidCallback onOrientation;
+  final bool landscape;
+  final VoidCallback onExitFullscreen;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextButton.styleFrom(foregroundColor: Colors.white, visualDensity: VisualDensity.compact);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      child: Row(
+        children: <Widget>[
+          if (episodeLabel != null)
+            TextButton(onPressed: onEpisodes, style: style, child: Text(episodeLabel!)),
+          if (sourceLabel != null)
+            TextButton(onPressed: onSources, style: style, child: Text(sourceLabel!)),
+          TextButton(onPressed: onSpeed, style: style, child: Text(speedLabel)),
+          const Spacer(),
+          IconButton(
+            tooltip: landscape ? '切换为竖屏' : '切换为横屏',
+            color: Colors.white,
+            onPressed: onOrientation,
+            icon: Icon(landscape ? Icons.stay_current_portrait : Icons.stay_current_landscape),
+          ),
+          IconButton(
+            tooltip: '退出全屏',
+            color: Colors.white,
+            onPressed: onExitFullscreen,
+            icon: const Icon(Icons.fullscreen_exit),
+          ),
+        ],
       ),
     );
   }

@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../models/capy_models.dart';
+import 'layout.dart';
 import 'poster_image.dart';
 
 class PosterCard extends StatelessWidget {
@@ -175,6 +176,9 @@ class _HorizontalPosterRowState extends State<HorizontalPosterRow> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final paged = widget.onLoadMore != null;
+    // 行高随可用高度收缩：横屏时若还固定 208 会占掉大半个屏幕。
+    final rowHeight = posterRowHeight(MediaQuery.sizeOf(context).height);
+    final cardWidth = posterCardWidth(rowHeight);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -196,9 +200,9 @@ class _HorizontalPosterRowState extends State<HorizontalPosterRow> {
             child: ErrorBanner(message: widget.error, onRetry: widget.onRetry),
           ),
         if (widget.loading)
-          const SizedBox(
-            height: 190,
-            child: Center(child: CircularProgressIndicator()),
+          SizedBox(
+            height: rowHeight,
+            child: const Center(child: CircularProgressIndicator()),
           )
         else if (widget.items.isEmpty)
           Container(
@@ -213,7 +217,7 @@ class _HorizontalPosterRowState extends State<HorizontalPosterRow> {
           )
         else
           SizedBox(
-            height: 208,
+            height: rowHeight,
             child: ListView.separated(
               controller: _scroll,
               scrollDirection: Axis.horizontal,
@@ -223,7 +227,7 @@ class _HorizontalPosterRowState extends State<HorizontalPosterRow> {
               itemBuilder: (context, index) {
                 if (index >= widget.items.length) {
                   return _PagingTile(
-                    width: 120,
+                    width: cardWidth,
                     loading: widget.loadingMore,
                     hasMore: widget.hasMore,
                     onPressed: widget.onLoadMore,
@@ -231,6 +235,7 @@ class _HorizontalPosterRowState extends State<HorizontalPosterRow> {
                 }
                 return PosterCard(
                   item: widget.items[index],
+                  width: cardWidth,
                   referer: widget.referer,
                   onTap: () => widget.onTapItem(widget.items[index]),
                 );
@@ -315,6 +320,7 @@ class PosterGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final extent = posterGridExtent(MediaQuery.sizeOf(context).width);
     return CustomScrollView(
       controller: controller,
       slivers: <Widget>[
@@ -326,8 +332,8 @@ class PosterGrid extends StatelessWidget {
             footer == null ? bottomPadding : 4,
           ),
           sliver: SliverGrid.builder(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 140,
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: extent,
               childAspectRatio: 0.55,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,

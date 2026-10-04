@@ -11,14 +11,15 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.6 已发布**（tag `v1.0.6` → Release，挂 APK 55.4MB + 未签名 IPA 23.7MB）；上一版 v1.0.5 |
+> | 版本 | **v1.0.7（待发布）**：屏幕自适应 + 播放器全屏/横竖屏切换；上一发布 v1.0.6 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
-> | 校验 | v1.0.6 容器内：`flutter analyze` **零问题**、Dart 单测 **39/39**（paging 6 + poster_image 5 + history 7）；Node 契约 **17/17** |
-> | 真机进度 | v1.0.4 分页已验 OK；**v1.0.5（保活/进度条/封面图）与 v1.0.6（进度记忆）待复验** |
-> | 底部导航 | 首页 / 搜索 / **历史** / 插件 / 设置（5 个标签） |
+> | 校验 | v1.0.7 容器内：`flutter analyze` **零问题**、Dart 单测 **46/46**（paging 6 + poster_image 5 + history 7 + layout 7）；Node 契约 **17/17** |
+> | 真机进度 | v1.0.4 分页已验 OK；**v1.0.5 / v1.0.6 / v1.0.7 待复验** |
+> | 自适应 | 宽 >= 600dp（横屏/平板）自动切**左侧导航栏**，内容限宽 1100dp；海报行高随可用高度收缩（150~210） |
+> | 底部导航 | 首页 / 搜索 / 历史 / 插件 / 设置（5 个标签） |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 15:25（v1.0.6：播放进度记忆 + 观看历史页） |
+> | 最后更新 | 2026-10-04 15:55（v1.0.7：屏幕自适应 + 全屏/横竖屏按钮） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
@@ -30,12 +31,12 @@
 > ```
 >
 > **③ 下一步待办（按优先级）**
-> 1. **真机复测 v1.0.6 进度记忆**：播一部片到中段退出 → 重新进详情页应显示「继续观看 · mm:ss」→ 点它从原位置续播；点「从头播放」则从 0 开始。历史标签页应出现该条（带封面/进度条/时间），左滑单条删除、右上「清空」清空全部。
-> 2. **真机复测 v1.0.5 三项**（若还没验）：① 首页滑到第 4 个分区再滑回不重载；② 播放页进度条可拖动快进；③ 封面图出图比例。
-> 3. **MissAV 封面如仍大量失败**：走 **设置 → 网络日志 → 复制**。已知结论见「铁律」——MissAV 封面走 CDN 直连、后端无代理端点，客户端连不上就无解。
-> 4. **MissAV 播放**：后端路由已恢复（`www.missav08.com`）、`master.m3u8` 可达；若真机仍失败，抓网络日志看 `master.m3u8` 状态码。
-> 5. 播放内核升级（可选）：`video_player` → `media_kit`（native mpv）吃 mpv 专用清单。
-> 6. 待补能力：`Widget.tmdb`、`sectionMode`、TV 大屏布局、字幕/弹幕面板、收藏夹。
+> 1. **真机复测 v1.0.7**：① 播放页右上「全屏」→ 应横屏 + 隐藏状态栏/标题栏，点屏幕可呼出/收起控制条（5 秒自动隐藏）；② 右上「横竖屏」按钮只切方向、不隐藏界面；③ 退出播放页后方向锁要**放开**、状态栏恢复。
+> 2. **真机复测 v1.0.7 自适应**：手机转横屏 → 底部导航栏应变成**左侧导航栏**，海报行变矮（不再占半个屏）。平板同理。
+> 3. **真机复测 v1.0.6 进度记忆**：播到中段退出 → 详情页显示「继续观看 · mm:ss」→ 续播；历史标签可左滑删/清空。
+> 4. **真机复测 v1.0.5 三项**：首页滑到第 4 个分区再滑回不重载；进度条可拖；封面图出图比例。
+> 5. **MissAV 封面如仍大量失败**：走 **设置 → 网络日志 → 复制**。已知 MissAV 封面走 CDN 直连、后端无代理端点。
+> 6. 待补能力：`Widget.tmdb`、`sectionMode`、字幕/弹幕面板、收藏夹、TV 大屏布局。
 >
 > **④ 铁律（踩过的坑）**
 > - **不要试图 1:1 反编译还原**：原 TV 版是 Kotlin+Compose 编译产物（78MB / 13 dex / R8 混淆），Compose 编译期变换不可逆。只做 clean-room（同规范、同模型、同能力）。
@@ -47,6 +48,8 @@
 > - **分页要防「后端不认 page」**：判断是否还有更多不能只看 `items.isNotEmpty`（后端每页返回同一批会无限重复追加）；按 id/标题去重后新增数为 0 就视为到底。统一走 `mergePage()`（`lib/models/paging.dart`）。
 > - ★★ **懒加载列表里的分区必须保活**：`ListView` 的 child 滚出视口会被销毁，State 没了 → `initState` 重新拉网络 → 用户看到「滑回来又加载一遍」。用 `AutomaticKeepAliveClientMixin`（`wantKeepAlive => true` + `super.build(context)`）**加**一层首屏缓存（`_homeSectionCache`，只有下拉刷新才清）。
 > - ★★ **全屏手势层会抢进度条**：播放页原本用 `GestureDetector(onVerticalDragEnd:)` 包住整屏，进度条（`VideoProgressIndicator`）轨道只有几像素、命中区太窄，横拖经常抢不过手势 → 「拖不动」。正解是**手势层只包视频区**，控制条放在它外面，并用自带 ~48dp 命中高度的 `Slider`。
+> - ★ **方向锁 / 沉浸式是全局状态，退出播放页必须还原**：`SystemChrome.setPreferredOrientations(const [])` 放开方向、`setEnabledSystemUIMode(edgeToEdge)` 把状态栏还回来。否则回到首页还卡在横屏、状态栏也没了。还原写在播放页 `dispose()` 里。
+> - **自适应只用一处断点常量**：`lib/ui/layout.dart` —— `kRailBreakpoint = 600`（宽 ≥ 600dp 用左侧导航栏）+ `posterRowHeight/posterCardWidth`（海报行随可用高度收缩到 150~210）。别在各页面各写一套魔法数字。
 > - ★★ **封面图要带浏览器 UA**：`CachedNetworkImage` 默认发 Dart 的 UA，封面 CDN 会挡。统一走 `lib/ui/poster_image.dart`（UA + `Accept: image/*`；失败再带 Referer 重试一次，优先用 `WidgetRuntime.imageReferer` —— 即组件自己请求站点时用的那个 Referer）。
 > - **MissAV 封面没有后端图片代理**：provider 类组件（51吃瓜/帝果/黄豆/剧果/野果/黄果）的封面由后端**代理好**（`/api/v1/providers/{id}/cover?url=…`，实测 200）；MissAV 只有 `/api/v1/missav/cover-probe`（只返回解析后的 CDN 直链，不代理），客户端必须自己能连上 `fourhoi.com` / `spic2-*.71352.men`。连不上就是网络/内容源侧的问题。
 > - **观看历史的粒度是「媒体 × 剧集」**：`watchEpisodeKey(target, 剧集标题)`；媒体级 key = `pluginId::mediaId`（同一部剧的「继续观看」靠它找最近一条）。记录存在 `<appDocs>/history.json`，上限 500 条，超了丢最旧的。
@@ -81,6 +84,28 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · v1.0.7 屏幕自适应 + 播放器全屏 / 横竖屏切换
+
+用户要：屏幕自适应、横竖向切换按钮、全屏按钮。
+
+**平台侧先确认**：Android `AndroidManifest` 没锁 `screenOrientation`（且 `configChanges` 已含 orientation/screenSize），iOS `Info.plist` 支持竖屏 + 两个横屏 —— 所以**旋转本来就能用**，缺的是布局自适应与播放入口的按钮。
+
+**① 自适应（新增 `lib/ui/layout.dart`，纯函数可测）**
+- `kRailBreakpoint = 600`：宽 ≥ 600dp（横屏 / 平板）时 `main.dart` 把底部 `NavigationBar` 换成左侧 `NavigationRail`，避免横屏时底部那条挤掉内容高度；内容加 `kContentMaxWidth = 1100` 限宽，超宽屏不把海报拉变形。
+- `posterRowHeight(可用高度)` → `(h * 0.34).clamp(150, 210)`：横屏矮屏时首页海报行自动变矮（原来写死 208，横屏占掉大半屏）。
+- `posterCardWidth(行高)`、`posterGridExtent(宽度)`：卡片与网格边长跟着走。
+
+**② 播放页 `player_page.dart`**
+- 新增状态 `_fullscreen` / `_landscape` / `_controlsVisible` + 自动隐藏 `Timer`。
+- **全屏按钮**：隐藏 AppBar 与底部操作条、`SystemUiMode.immersiveSticky` 隐藏系统栏、默认转横屏；控制层改成浮在视频上的半透明渐变条；点视频区呼出/收起，5 秒无操作自动隐藏。
+- **横竖屏按钮**：只切方向、不动界面（AppBar 右上 + 全屏时的悬浮行里都有）。图标随当前方向变（横屏时显示"切换为竖屏"）。
+- 全屏悬浮行还带「选集 / 线路 / 倍速」（原来这些在底部栏，全屏时被隐藏了）。
+- **退出还原**：`dispose()` 里放开方向锁 + `edgeToEnd` 恢复系统栏。
+
+**新增测试** `test/layout_test.dart`（7 条）：导航断点、横竖判定、行高上下限与线性区间、卡片宽度夹取、网格边长。
+
+版本 `1.0.6+7` → `1.0.7+8`。验证：容器 analyze 零问题、Dart **46/46**、Node 契约 **17/17**。
 
 ### 2026-10-04 · v1.0.6 播放进度记忆 + 观看历史
 

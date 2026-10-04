@@ -11,6 +11,7 @@ import 'store/history_store.dart';
 import 'store/plugin_store.dart';
 import 'ui/history_page.dart';
 import 'ui/home_page.dart';
+import 'ui/layout.dart';
 import 'ui/plugin_manager_page.dart';
 import 'ui/search_page.dart';
 import 'ui/settings_page.dart';
@@ -50,41 +51,85 @@ class RootShell extends StatefulWidget {
   State<RootShell> createState() => _RootShellState();
 }
 
+class _Dest {
+  const _Dest(this.icon, this.selectedIcon, this.label);
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+}
+
 class _RootShellState extends State<RootShell> {
   int _index = 0;
 
-  static const List<String> _titles = <String>['首页', '搜索', '历史', '插件', '设置'];
+  static const List<_Dest> _destinations = <_Dest>[
+    _Dest(Icons.home_outlined, Icons.home, '首页'),
+    _Dest(Icons.search_outlined, Icons.search, '搜索'),
+    _Dest(Icons.history_outlined, Icons.history, '历史'),
+    _Dest(Icons.extension_outlined, Icons.extension, '插件'),
+    _Dest(Icons.settings_outlined, Icons.settings, '设置'),
+  ];
+
+  void _select(int value) => setState(() => _index = value);
 
   @override
   Widget build(BuildContext context) {
+    // 宽屏（横屏 / 平板）用左侧导航栏，窄屏用底部导航栏 —— 不然横屏时底部那条会挤掉内容高度。
+    final useRail = useNavigationRail(MediaQuery.sizeOf(context).width);
+
+    // IndexedStack 的 index 不能是常量，单独构造一次。
+    final pages = IndexedStack(
+      index: _index,
+      children: const <Widget>[
+        HomePage(),
+        SearchPage(),
+        HistoryPage(),
+        PluginManagerPage(),
+        SettingsPage(),
+      ],
+    );
+
+    final title = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(_destinations[_index].label, style: Theme.of(context).textTheme.headlineSmall),
+      ),
+    );
+
+    final body = useRail
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              NavigationRail(
+                selectedIndex: _index,
+                onDestinationSelected: _select,
+                labelType: NavigationRailLabelType.all,
+                destinations: <NavigationRailDestination>[
+                  for (final dest in _destinations)
+                    NavigationRailDestination(
+                      icon: Icon(dest.icon),
+                      selectedIcon: Icon(dest.selectedIcon),
+                      label: Text(dest.label),
+                    ),
+                ],
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: kContentMaxWidth),
+                    child: Column(children: <Widget>[title, Expanded(child: pages)]),
+                  ),
+                ),
+              ),
+            ],
+          )
+        : Column(children: <Widget>[title, Expanded(child: pages)]);
     return Scaffold(
       body: Stack(
         children: <Widget>[
-          SafeArea(
-            child: Column(
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(_titles[_index], style: Theme.of(context).textTheme.headlineSmall),
-                  ),
-                ),
-                Expanded(
-                  child: IndexedStack(
-                    index: _index,
-                    children: const <Widget>[
-                      HomePage(),
-                      SearchPage(),
-                      HistoryPage(),
-                      PluginManagerPage(),
-                      SettingsPage(),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          SafeArea(child: body),
           // 运行时 WebView 宿主：挂在屏幕外，保证 JS 上下文一直存活
           IgnorePointer(
             child: ListenableBuilder(
@@ -94,17 +139,16 @@ class _RootShellState extends State<RootShell> {
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const <NavigationDestination>[
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: '首页'),
-          NavigationDestination(icon: Icon(Icons.search_outlined), selectedIcon: Icon(Icons.search), label: '搜索'),
-          NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: '历史'),
-          NavigationDestination(icon: Icon(Icons.extension_outlined), selectedIcon: Icon(Icons.extension), label: '插件'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '设置'),
-        ],
-      ),
+      bottomNavigationBar: useRail
+          ? null
+          : NavigationBar(
+              selectedIndex: _index,
+              onDestinationSelected: _select,
+              destinations: <NavigationDestination>[
+                for (final dest in _destinations)
+                  NavigationDestination(icon: Icon(dest.icon), selectedIcon: Icon(dest.selectedIcon), label: dest.label),
+              ],
+            ),
     );
   }
 }
