@@ -156,14 +156,12 @@ class _PlayerPageState extends State<PlayerPage> {
   /// 给播放器一个**格式提示**。
   ///
   /// Android 走 ExoPlayer、iOS 走 AVPlayer —— 后者能靠内容嗅探，
-  /// 前者遇到「地址没有扩展名 / Content-Type 不标准」更容易直接报 Source error，
-  /// 这正是「iOS 能播、Android 播不了」最常见的成因之一。
-  /// 这里**只在扩展名明确时**给提示，不乱猜。
+  /// 前者只认扩展名/声明类型。这里**只在与扩展名一致时**给提示，
+  /// 不给「other」这类模糊值（那会覆盖播放器自己的判断，反而更容易失败）。
   VideoFormat? _formatHintOf(String url) {
     final path = Uri.tryParse(url.trim())?.path.toLowerCase() ?? '';
     if (path.endsWith('.m3u8')) return VideoFormat.hls;
     if (path.endsWith('.mpd')) return VideoFormat.dash;
-    if (path.endsWith('.mp4') || path.endsWith('.mkv') || path.endsWith('.flv')) return VideoFormat.other;
     return null;
   }
 

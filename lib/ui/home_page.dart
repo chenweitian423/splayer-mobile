@@ -341,7 +341,9 @@ class _ModuleListState extends State<_ModuleList> {
   }
 
   void _onScroll() {
-    if (!_scroll.hasClients) return;
+    // hasContentDimensions 必须一起判：position 还没量出内容尺寸时
+    // maxScrollExtent 会抛「Null check operator used on a null value」。
+    if (!mounted || !_scroll.hasClients || !_scroll.position.hasContentDimensions) return;
     final position = _scroll.position;
     if (position.pixels >= position.maxScrollExtent - 400) {
       _loadMore();
@@ -351,7 +353,7 @@ class _ModuleListState extends State<_ModuleList> {
   /// 首屏未填满一屏时继续加载，直到填满或到底。
   void _fillViewport() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scroll.hasClients) return;
+      if (!mounted || !_scroll.hasClients || !_scroll.position.hasContentDimensions) return;
       if (_scroll.position.maxScrollExtent <= 0 && _hasMore && !_loading) {
         _loadMore();
       }

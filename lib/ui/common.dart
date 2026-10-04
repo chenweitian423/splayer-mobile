@@ -164,7 +164,12 @@ class _HorizontalPosterRowState extends State<HorizontalPosterRow> {
   void _maybeLoadMore() {
     final onLoadMore = widget.onLoadMore;
     if (onLoadMore == null || widget.loadingMore || !widget.hasMore) return;
-    if (!_scroll.hasClients) return;
+    // ★ 必须连 hasContentDimensions 一起判。
+    //   `hasClients` 为真只说明「挂上了 position」，但该 position 还没拿到内容尺寸时，
+    //   `maxScrollExtent` 底层的 `_maxScrollExtent!` 会抛
+    //   「Null check operator used on a null value」—— 真机错误日志抓到过
+    //   （didUpdateWidget 里排的那帧 post-frame 回调，此时布局还没跑）。
+    if (!mounted || !_scroll.hasClients || !_scroll.position.hasContentDimensions) return;
     final position = _scroll.position;
     // 内容不足以滚动（maxScrollExtent == 0）时也触发，避免首页首屏只有一屏却停住
     if (position.pixels >= position.maxScrollExtent - 400) {

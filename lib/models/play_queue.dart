@@ -51,6 +51,26 @@ String? rewriteMpvToHls(String url) {
   return url.replaceAllMapped(pattern, (match) => '${match.group(1)}player=hls');
 }
 
+/// 后端播放代理的 `/media` 端点**实际下发的是 HLS 清单**。
+///
+/// 实测（curl 打真实地址）：`Content-Type: application/vnd.apple.mpegurl`，
+/// 且与同源的 `/playlist.m3u8` 返回**字节完全相同**。
+///
+/// 问题在于它**路径没有扩展名**：
+///   * iOS 的 AVPlayer 会嗅探内容类型 → 能播；
+///   * Android 的 ExoPlayer 只会按 URI 扩展名/声明类型判断 → 认成「未知」，
+///     拿渐进式解析器去啃 m3u8 文本，直接
+///     `ExoPlaybackException: Source error`。
+/// 这就解释了「同一部片 iOS 能播、Android 播不了」。
+///
+/// 这里把末段 `/media` 换成同源的 `/playlist.m3u8`，让 Android 也能正确识别。
+/// **只替换末段**，token 与查询串逐字保留（token 是签名的一部分，动一个字节就废）。
+String? rewriteBackendPlaybackToHls(String url) {
+  final match = RegExp(r'^(.*/playback/[^/?#]+)/media([?#].*)?$').firstMatch(url.trim());
+  if (match == null) return null;
+  return '${match.group(1)}/playlist.m3u8${match.group(2) ?? ''}';
+}
+
 /// 一集播完是否该自动切下一集。
 ///
 /// 三个前提缺一不可：
@@ -67,9 +87,10 @@ bool shouldAutoAdvance({
     enabled && episodeList && total > 1 && currentIndex + 1 < total;
 
 /// 生成播放候选：
-///   1. 若声明了 mpv 内核（URL 带 `player=mpv` 或 playerType=mpv），先试 hls 兼容变体；
-///   2. 再试原地址；
-///   其它情况原地址优先（保持组件原意）。
+///   1. 声明了 mpv 内核（URL 带 `player=mpv` 或 playerType=mpv）→ 先试 hls 兼容变体；
+///   2. 后端播放代理的无扩展名 `/media` → 先试同源 `/playlist.m3u8`
+///      （它下发的本来就是 HLS，但 Android 靠扩展名识别，认不出来）；
+///   3. 其它情况原地址优先（保持组件原意）。
 List<PlayCandidate> playUrlCandidates(
   String url, {
   Map<String, String> headers = const {},
@@ -86,12 +107,19 @@ List<PlayCandidate> playUrlCandidates(
 
   final mpvDeclared = playerType.toLowerCase() == 'mpv' || url.contains('player=mpv');
   final hls = rewriteMpvToHls(url);
+  final proxyHls = rewriteBackendPlaybackToHls(url);
+
   if (mpvDeclared && hls != null) {
     add(hls, 'HLS 兼容线路');
     add(url, '原始线路（mpv）');
+  } else if (proxyHls != null) {
+    // 无扩展名的 /media：先试带 `.m3u8` 扩展名的同源地址。
+    add(proxyHls, 'HLS 兼容线路');
+    add(url, '原始线路');
   } else {
     add(url, '线路 1');
     if (hls != null) add(hls, 'HLS 兼容线路');
   }
+  if (proxyHls != null && !seen.contains(proxyHls)) add(proxyHls, 'HLS 兼容线路');
   return result;
 }
