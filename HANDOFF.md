@@ -11,13 +11,14 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.5 已发布**（tag `v1.0.5` → Release，挂 APK 55.2MB + 未签名 IPA 23.7MB）；上一版 v1.0.4 |
+> | 版本 | **v1.0.6（待发布）**：新增播放进度记忆 + 观看历史；上一发布 v1.0.5 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
-> | 校验 | v1.0.5 容器内：`flutter analyze` **零问题**、Dart 单测 **32/32**（`paging_test` 6 + `poster_image_test` 5）；Node 契约 **17/17** |
-> | 真机进度 | v1.0.4 已真机验证分页 OK；**v1.0.5 待复验：分区不重载 / 进度条可拖 / 封面图 / MissAV 播放** |
+> | 校验 | v1.0.6 容器内：`flutter analyze` **零问题**、Dart 单测 **39/39**（paging 6 + poster_image 5 + history 7）；Node 契约 **17/17** |
+> | 真机进度 | v1.0.4 分页已验 OK；**v1.0.5（保活/进度条/封面图）与 v1.0.6（进度记忆）待复验** |
+> | 底部导航 | 首页 / 搜索 / **历史** / 插件 / 设置（5 个标签） |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 15:00（v1.0.5：首页保活 / 进度条可拖 / 封面图请求头 / MissAV 播放链路） |
+> | 最后更新 | 2026-10-04 15:25（v1.0.6：播放进度记忆 + 观看历史页） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
@@ -29,11 +30,12 @@
 > ```
 >
 > **③ 下一步待办（按优先级）**
-> 1. **真机复测 v1.0.5**：① 首页滑到第 4 个分区再滑回来，**不应**重新加载；② 播放页进度条可拖动快进；③ 封面图（尤其 MissAV）能出多少。
-> 2. **MissAV 封面如仍大量失败**：走 **设置 → 网络日志 → 复制**。已知：MissAV 封面走的是 CDN 直连（`fourhoi.com` / `spic2-*.71352.men` / DMM），**后端没有 MissAV 的图片代理端点**（`/api/v1/providers/{id}/cover` 只服务 provider 类组件，missav 返回 404）。若 CDN 在客户端网络不可达，属内容源/网络侧，App 无法代偿。
-> 3. **MissAV 播放**：路由已在后端恢复（`/api/v1/discovery/sites/missav/routes` 返回 `www.missav08.com`，`x99-direct`），后端 `/api/v1/subtitles/master.m3u8` 可达。若真机仍失败，抓网络日志看 `master.m3u8` 的状态码再定位。
-> 4. 播放内核升级（可选）：把 `video_player` 换 `media_kit`（native mpv）吃 mpv 专用清单。
-> 5. 待补能力：`Widget.tmdb`、`sectionMode`、TV 大屏布局、字幕/弹幕面板、播放进度记忆。
+> 1. **真机复测 v1.0.6 进度记忆**：播一部片到中段退出 → 重新进详情页应显示「继续观看 · mm:ss」→ 点它从原位置续播；点「从头播放」则从 0 开始。历史标签页应出现该条（带封面/进度条/时间），左滑单条删除、右上「清空」清空全部。
+> 2. **真机复测 v1.0.5 三项**（若还没验）：① 首页滑到第 4 个分区再滑回不重载；② 播放页进度条可拖动快进；③ 封面图出图比例。
+> 3. **MissAV 封面如仍大量失败**：走 **设置 → 网络日志 → 复制**。已知结论见「铁律」——MissAV 封面走 CDN 直连、后端无代理端点，客户端连不上就无解。
+> 4. **MissAV 播放**：后端路由已恢复（`www.missav08.com`）、`master.m3u8` 可达；若真机仍失败，抓网络日志看 `master.m3u8` 状态码。
+> 5. 播放内核升级（可选）：`video_player` → `media_kit`（native mpv）吃 mpv 专用清单。
+> 6. 待补能力：`Widget.tmdb`、`sectionMode`、TV 大屏布局、字幕/弹幕面板、收藏夹。
 >
 > **④ 铁律（踩过的坑）**
 > - **不要试图 1:1 反编译还原**：原 TV 版是 Kotlin+Compose 编译产物（78MB / 13 dex / R8 混淆），Compose 编译期变换不可逆。只做 clean-room（同规范、同模型、同能力）。
@@ -47,6 +49,8 @@
 > - ★★ **全屏手势层会抢进度条**：播放页原本用 `GestureDetector(onVerticalDragEnd:)` 包住整屏，进度条（`VideoProgressIndicator`）轨道只有几像素、命中区太窄，横拖经常抢不过手势 → 「拖不动」。正解是**手势层只包视频区**，控制条放在它外面，并用自带 ~48dp 命中高度的 `Slider`。
 > - ★★ **封面图要带浏览器 UA**：`CachedNetworkImage` 默认发 Dart 的 UA，封面 CDN 会挡。统一走 `lib/ui/poster_image.dart`（UA + `Accept: image/*`；失败再带 Referer 重试一次，优先用 `WidgetRuntime.imageReferer` —— 即组件自己请求站点时用的那个 Referer）。
 > - **MissAV 封面没有后端图片代理**：provider 类组件（51吃瓜/帝果/黄豆/剧果/野果/黄果）的封面由后端**代理好**（`/api/v1/providers/{id}/cover?url=…`，实测 200）；MissAV 只有 `/api/v1/missav/cover-probe`（只返回解析后的 CDN 直链，不代理），客户端必须自己能连上 `fourhoi.com` / `spic2-*.71352.men`。连不上就是网络/内容源侧的问题。
+> - **观看历史的粒度是「媒体 × 剧集」**：`watchEpisodeKey(target, 剧集标题)`；媒体级 key = `pluginId::mediaId`（同一部剧的「继续观看」靠它找最近一条）。记录存在 `<appDocs>/history.json`，上限 500 条，超了丢最旧的。
+> - **`dispose()` 里存进度要同步读值**：`VideoPlayerController` 一 `dispose` 就拿不到 `value` 了 —— 必须在 dispose 里**先同步读出** position/duration，再 `unawaited` 落盘，最后才 `controller.dispose()`。
 > - ★★ **`loadDetail` 只能传字符串**：8 支组件全吃字符串，其中 5 支会把参数直接当 URL 用 —— 传对象就是 `[object Object]`，表现是「详情页报 URI 错、无法播放」。宿主已做「字符串优先 + 对象回退」。
 > - ★★ **桥接参数必须三层编码**：值 → `jsonEncode`（JSON 文本）→ `jsonEncode`（JS 字符串字面量）。
 >   少一层，JS 的 `JSON.parse` 就拿不到字符串，参数静默变 `{}`/`null` —— 现象是「所有组件一起报 `组件传入的是 null`」。
@@ -77,6 +81,27 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · v1.0.6 播放进度记忆 + 观看历史
+
+用户要「播放进度记忆，也就是历史记录，能清理」。
+
+**新增 `lib/store/history_store.dart`**：
+- `WatchTarget`（插件 id + 媒体 id + 标题/封面/详情链接）→ `mediaKey = pluginId::mediaId`。
+- `WatchRecord`：`key`（`媒体key::剧集标题`，无剧集则退化为媒体 key）、`positionMs`/`durationMs`/`updatedAt`；派生 `progress`（0~1）、`finished`（≥98%）、`resumable`（≥5s 且未完）。
+- `HistoryStore`（ChangeNotifier）：落盘 `<appDocs>/history.json`，上限 500 条（超出丢最旧），`find/latestForMedia/save/remove/clear`。位置没变不重复写盘。
+
+**新增 `lib/ui/history_page.dart`**：封面 + 标题 + 剧集 + 进度条 + 相对时间；**左滑删除单条**、右侧 ✕ 删除、右上「清空」（带二次确认）；点击回到该条目的详情页（用 `PluginEngine.runtimeFor` 重建运行时），组件被删/停用会给出明确提示；空态有引导文案。
+
+**播放页 `player_page.dart`**：新增 `WatchTarget target` 与 `fromStart`；`initialize()` 之后按记录 `seekTo` 续播并提示「已从 mm:ss 继续播放」；每 5 秒落一次盘、切集前落一次、`dispose()` 里同步读值后落一次。`fromStart` 时把记录清零。
+
+**详情页 `detail_page.dart`**：新增 `WatchTarget _target`；有可续播记录时主按钮变「**继续观看 · mm:ss**」并多一个「从头播放」副按钮；从播放页返回时 `setState` 刷新按钮。
+
+**导航**：底部加 **历史** 标签（首页 / 搜索 / 历史 / 插件 / 设置）；设置页也加一条「观看历史」入口（显示条数）。启动时 `HistoryStore.load()`。
+
+**新增测试** `test/history_test.dart`（7 条）：剧集 key 生成、progress 夹取、98% 判定、<5s 不续播、JSON 往返、缺字段容错。
+
+版本 `1.0.5+6` → `1.0.6+7`。验证：容器 analyze 零问题、Dart **39/39**、Node 契约 **17/17**。
 
 ### 2026-10-04 · v1.0.5 首页保活 / 进度条可拖 / 封面图请求头 / MissAV 链路核对
 

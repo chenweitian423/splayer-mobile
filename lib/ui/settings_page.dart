@@ -4,7 +4,9 @@ library;
 import 'package:flutter/material.dart';
 
 import '../runtime/plugin_engine.dart';
+import '../store/history_store.dart';
 import '../store/plugin_store.dart';
+import 'history_page.dart';
 import 'netlog_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -14,7 +16,11 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge(<Listenable>[PluginStore.instance, PluginEngine.instance]),
+      listenable: Listenable.merge(<Listenable>[
+        PluginStore.instance,
+        PluginEngine.instance,
+        HistoryStore.instance,
+      ]),
       builder: (context, _) {
         final records = PluginStore.instance.records;
         final loaded = records.where((r) => PluginEngine.instance.isReady(r.id)).length;
@@ -25,6 +31,15 @@ class SettingsPage extends StatelessWidget {
               leading: const Icon(Icons.extension_outlined),
               title: const Text('已安装组件'),
               trailing: Text('${records.length} 个（已装载 $loaded）'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('观看历史'),
+              subtitle: const Text('续播记录，可单条删除或一键清空'),
+              trailing: Text('${HistoryStore.instance.count} 条'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const HistoryPage(embedded: false)),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.receipt_long_outlined),

@@ -6,9 +6,19 @@ import 'package:flutter/material.dart';
 import '../models/capy_models.dart';
 import '../models/play_queue.dart';
 import '../runtime/widget_runtime.dart';
+import '../store/history_store.dart';
 import 'common.dart';
 import 'player_page.dart';
 import 'poster_image.dart';
+
+/// 把毫秒格式化成 `12:34` / `1:02:03`。
+String _fmtMs(int milliseconds) {
+  final d = Duration(milliseconds: milliseconds);
+  final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+  final hours = d.inHours;
+  return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
+}
 
 class DetailPage extends StatefulWidget {
   const DetailPage({super.key, required this.runtime, required this.item, this.pluginTitle = ''});
@@ -119,19 +129,42 @@ class _DetailPageState extends State<DetailPage> {
         .toList();
   }
 
-  void _play(int index) {
+  /// 写观看历史用的定位信息（插件 id + 媒体 id + 标题/封面/详情链接）。
+  WatchTarget get _target {
+    final item = widget.item;
+    final mediaId = item.id.isNotEmpty
+        ? item.id
+        : (item.link.isNotEmpty ? item.link : item.title);
+    final poster = (_detail?.posterUrl.isNotEmpty ?? false) ? _detail!.posterUrl : item.posterUrl;
+    return WatchTarget(
+      pluginId: widget.runtime.record.id,
+      mediaId: mediaId,
+      title: _title,
+      posterUrl: poster,
+      link: item.link,
+    );
+  }
+
+  void _play(int index, {bool fromStart = false}) {
     final queue = _queue;
     if (queue.isEmpty) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PlayerPage(
-          episodes: queue,
-          initialIndex: index.clamp(0, queue.length - 1),
-          title: _title,
-          fallbacks: _fallbacks,
-        ),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => PlayerPage(
+              episodes: queue,
+              initialIndex: index.clamp(0, queue.length - 1),
+              title: _title,
+              target: _target,
+              fallbacks: _fallbacks,
+              fromStart: fromStart,
+            ),
+          ),
+        )
+        .then((_) {
+      // 从播放页回来刷新「继续观看」按钮。
+      if (mounted) setState(() {});
+    });
   }
 
   String get _title {
@@ -152,6 +185,11 @@ class _DetailPageState extends State<DetailPage> {
     final queue = _queue;
     final episodes = detail?.allEpisodes ?? const <Episode>[];
     final sources = detail?.playSources ?? const <PlaySource>[];
+    // 观看历史：这部剧/电影上次看到哪了。
+    final resume = HistoryStore.instance.latestForMedia(_target.mediaKey);
+    final resumeIndex = (resume == null || resume.episodeTitle.isEmpty)
+        ? 0
+        : queue.indexWhere((item) => item.title == resume.episodeTitle);
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -207,12 +245,26 @@ class _DetailPageState extends State<DetailPage> {
                         ),
                       ],
                       const SizedBox(height: 12),
-                      if (queue.isNotEmpty)
-                        FilledButton.icon(
-                          onPressed: () => _play(0),
-                          icon: const Icon(Icons.play_arrow),
-                          label: Text(episodes.length > 1 ? '从第 1 集开始（共 ${episodes.length} 集）' : '立即播放'),
-                        ),
+                      if (queue.isNotEmpty) ...<Widget>[
+                        if (resume != null && resume.resumable)
+                          FilledButton.icon(
+                            onPressed: () => _play(resumeIndex < 0 ? 0 : resumeIndex),
+                            icon: const Icon(Icons.play_arrow),
+                            label: Text('继续观看 · ${_fmtMs(resume.positionMs)}'),
+                          )
+                        else
+                          FilledButton.icon(
+                            onPressed: () => _play(0),
+                            icon: const Icon(Icons.play_arrow),
+                            label: Text(episodes.length > 1 ? '从第 1 集开始（共 ${episodes.length} 集）' : '立即播放'),
+                          ),
+                        if (resume != null && resume.resumable)
+                          TextButton.icon(
+                            onPressed: () => _play(resumeIndex < 0 ? 0 : resumeIndex, fromStart: true),
+                            icon: const Icon(Icons.replay, size: 18),
+                            label: const Text('从头播放'),
+                          ),
+                      ],
                     ],
                   ),
                 ),

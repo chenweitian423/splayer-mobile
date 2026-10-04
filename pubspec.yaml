@@ -2,7 +2,7 @@ name: splayer_mobile
 description: "SPlayer Mobile —— 组件化播放器（clean-room 复刻，兼容 CapyPlayer / Forward Widget 组件规范）"
 publish_to: 'none'
 
-version: 1.0.5+6
+version: 1.0.6+7
 
 environment:
   sdk: ^3.8.0

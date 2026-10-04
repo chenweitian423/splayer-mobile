@@ -7,7 +7,9 @@ library;
 import 'package:flutter/material.dart';
 
 import 'runtime/plugin_engine.dart';
+import 'store/history_store.dart';
 import 'store/plugin_store.dart';
+import 'ui/history_page.dart';
 import 'ui/home_page.dart';
 import 'ui/plugin_manager_page.dart';
 import 'ui/search_page.dart';
@@ -16,6 +18,7 @@ import 'ui/settings_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await PluginStore.instance.load();
+  await HistoryStore.instance.load();
   runApp(const SPlayerApp());
 }
 
@@ -50,7 +53,7 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   int _index = 0;
 
-  static const List<String> _titles = <String>['首页', '搜索', '插件', '设置'];
+  static const List<String> _titles = <String>['首页', '搜索', '历史', '插件', '设置'];
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +76,7 @@ class _RootShellState extends State<RootShell> {
                     children: const <Widget>[
                       HomePage(),
                       SearchPage(),
+                      HistoryPage(),
                       PluginManagerPage(),
                       SettingsPage(),
                     ],
@@ -96,6 +100,7 @@ class _RootShellState extends State<RootShell> {
         destinations: const <NavigationDestination>[
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: '首页'),
           NavigationDestination(icon: Icon(Icons.search_outlined), selectedIcon: Icon(Icons.search), label: '搜索'),
+          NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: '历史'),
           NavigationDestination(icon: Icon(Icons.extension_outlined), selectedIcon: Icon(Icons.extension), label: '插件'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: '设置'),
         ],

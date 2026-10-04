@@ -1,5 +1,7 @@
-/// 播放页：选集 / 竖滑切换 / 倍速 / 失败自动换线路。
+/// 播放页：选集 / 竖滑切换 / 倍速 / 失败自动换线路 / 进度记忆。
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,14 +9,17 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/play_queue.dart';
+import '../store/history_store.dart';
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({
     super.key,
     required this.episodes,
     required this.title,
+    required this.target,
     this.initialIndex = 0,
     this.fallbacks = const <PlayItem>[],
+    this.fromStart = false,
   });
 
   /// 播放队列：剧集就是「集」，电影多线路就是「线路」。
@@ -24,6 +29,12 @@ class PlayerPage extends StatefulWidget {
 
   /// 当前条目换线路时的备用来源（组件的 playSources）。
   final List<PlayItem> fallbacks;
+
+  /// 写进观看历史的定位信息。
+  final WatchTarget target;
+
+  /// 为真时忽略已存的进度、从头播（「从头播放」按钮）。
+  final bool fromStart;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -91,6 +102,7 @@ class _PlayerPageState extends State<PlayerPage> {
       try {
         await controller.initialize();
         await controller.setPlaybackSpeed(_speed);
+        await _restoreProgress(controller);
         await controller.play();
         controller.addListener(_onTick);
         if (!mounted) return;
@@ -112,13 +124,75 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   void _onTick() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    _maybeSaveProgress();
+  }
+
+  String get _recordKey => watchEpisodeKey(widget.target, _current.title);
+
+  /// 续播：恢复上次看到的位置（「从头播放」时跳过，并把记录清零）。
+  Future<void> _restoreProgress(VideoPlayerController controller) async {
+    if (widget.fromStart) {
+      await _saveProgress(controller, positionMs: 0);
+      return;
+    }
+    final record = HistoryStore.instance.find(_recordKey);
+    if (record == null || !record.resumable) return;
+    if (record.positionMs >= controller.value.duration.inMilliseconds) return;
+    await controller.seekTo(Duration(milliseconds: record.positionMs));
+    _flashHint('已从 ${_fmt(Duration(milliseconds: record.positionMs))} 继续播放');
+  }
+
+  DateTime _lastSaved = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 每 5 秒落一次盘，避免写太勤。
+  void _maybeSaveProgress() {
+    final now = DateTime.now();
+    if (now.difference(_lastSaved) < const Duration(seconds: 5)) return;
+    _lastSaved = now;
+    unawaited(_saveProgress(_controller));
+  }
+
+  Future<void> _saveProgress(VideoPlayerController? controller, {int? positionMs}) async {
+    if (controller == null || !controller.value.isInitialized) return;
+    final value = controller.value;
+    final durationMs = value.duration.inMilliseconds;
+    if (durationMs <= 0) return;
+    final article = widget.episodes.length > 1 ? _current.title : '';
+    await HistoryStore.instance.save(
+      WatchRecord(
+        key: watchEpisodeKey(widget.target, _current.title),
+        target: widget.target,
+        episodeTitle: article,
+        positionMs: positionMs ?? value.position.inMilliseconds,
+        durationMs: durationMs,
+      ),
+    );
   }
 
   @override
   void dispose() {
-    _controller?.removeListener(_onTick);
-    _controller?.dispose();
+    // 退出时立刻记一次最终位置（读取是同步的，之后再销毁控制器）。
+    final controller = _controller;
+    if (controller != null && controller.value.isInitialized) {
+      final value = controller.value;
+      if (value.duration.inMilliseconds > 0) {
+        unawaited(
+          HistoryStore.instance.save(
+            WatchRecord(
+              key: _recordKey,
+              target: widget.target,
+              episodeTitle: widget.episodes.length > 1 ? _current.title : '',
+              positionMs: value.position.inMilliseconds,
+              durationMs: value.duration.inMilliseconds,
+            ),
+          ),
+        );
+      }
+    }
+    controller?.removeListener(_onTick);
+    controller?.dispose();
     super.dispose();
   }
 
@@ -128,6 +202,8 @@ class _PlayerPageState extends State<PlayerPage> {
       _flashHint(delta > 0 ? '已经是最后一集' : '已经是第一集');
       return;
     }
+    // 切集前先把当前这集的位置记下来。
+    await _saveProgress(_controller);
     setState(() => _index = next);
     _flashHint('${delta > 0 ? '下一集' : '上一集'}：${widget.episodes[next].title}');
     await _load(candidateIndex: 0);
@@ -157,6 +233,7 @@ class _PlayerPageState extends State<PlayerPage> {
       builder: (context) => _EpisodeSheet(episodes: widget.episodes, current: _index),
     );
     if (picked == null || picked == _index) return;
+    await _saveProgress(_controller);
     setState(() => _index = picked);
     await _load(candidateIndex: 0);
   }
