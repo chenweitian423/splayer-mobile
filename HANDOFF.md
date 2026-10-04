@@ -11,7 +11,7 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.8（待发布）**：剧集自动连播；上一发布 v1.0.7 |
+> | 版本 | **v1.0.8 已发布**（tag `v1.0.8` → Release，挂 APK 55.5MB + 未签名 IPA 23.7MB）；上一版 v1.0.7 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
 > | 校验 | v1.0.8 容器内：`flutter analyze` **零问题**、Dart 单测 **51/51**（paging 6 + poster_image 5 + history 7 + layout 7 + autoplay 5）；Node 契约 **17/17** |
@@ -103,6 +103,14 @@
 **新增测试** `test/autoplay_test.dart`（5 条）：正常连播、最后一集不连播、开关关掉不连播、非剧集模式不连播、单条/0 条不连播。
 
 版本 `1.0.7+8` → `1.0.8+9`。验证：容器 analyze 零问题、Dart **51/51**、Node 契约 **17/17**。
+
+**已发布 Release `v1.0.8`**（tag 指向 `f1b7445`，CI run `37189101835` 四 job 全绿）
+<https://github.com/chenweitian423/splayer-mobile/releases/tag/v1.0.8>
+- `SPlayerMobile-v1.0.8-android.apk` 55.5 MB sha256 `977edb20…5c40`
+- `SPlayerMobile-v1.0.8-ios-unsigned.ipa` 23.7 MB sha256 `a338a3c5…f100`
+
+本地产物：`F:\codex项目\播放器app\build\release\v1.0.8\`（APK 已核对 sha256 一致；IPA 因 `github.com` 主站当时不可达未落地，需要时从 Release 页直接下）。
+> 网络备注：本机对 `github.com` 时有不可达，`releases/download/...` 会失败；**`api.github.com` 通常可达**，可用 `gh api repos/<owner>/<repo>/releases/assets/<id> -H "Accept: application/octet-stream" > <file>` 兜底下载。
 
 ### 2026-10-04 · v1.0.7 屏幕自适应 + 播放器全屏 / 横竖屏切换
 
