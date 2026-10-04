@@ -11,7 +11,7 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.5（待发布）**；上一发布 v1.0.4（分页修复） |
+> | 版本 | **v1.0.5 已发布**（tag `v1.0.5` → Release，挂 APK 55.2MB + 未签名 IPA 23.7MB）；上一版 v1.0.4 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
 > | 校验 | v1.0.5 容器内：`flutter analyze` **零问题**、Dart 单测 **32/32**（`paging_test` 6 + `poster_image_test` 5）；Node 契约 **17/17** |
@@ -102,6 +102,13 @@
 
 **新增测试** `test/poster_image_test.dart`（5 条：3 条请求头 + 2 条 `CapyDetail.playerType`）。版本 `1.0.4+5` → `1.0.5+6`。
 验证：容器 `flutter analyze` 零问题、Dart **32/32**、Node 契约 **17/17**。
+
+**已发布 Release `v1.0.5`**（tag 指向 `77ac9e2`，CI run `37184337514` 四 job 全绿）
+<https://github.com/chenweitian423/splayer-mobile/releases/tag/v1.0.5>
+- `SPlayerMobile-v1.0.5-android.apk` 55.2 MB sha256 `78c900fd…80ec9`
+- `SPlayerMobile-v1.0.5-ios-unsigned.ipa` 23.7 MB sha256 `40eda7ef…b6900a`
+
+本地产物：`F:\codex项目\播放器app\build\release\v1.0.5\`（sha256 已与 Release 核对一致）。
 
 ### 2026-10-04 · v1.0.4 修「列表只加载第 1 页、下滑不加载后续资源」
 
