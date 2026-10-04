@@ -120,11 +120,50 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 需要完整历史与 tag，才能算出「上一个版本」做对比链接。
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+
+      # 发布说明取自 CHANGELOG.md 里 `## vX.Y.Z` 那一段；找不到就提示补写。
+      - name: 生成本次发布说明
+        run: |
+          set -uo pipefail
+          tag="${GITHUB_REF_NAME}"
+
+          # 1) 取 CHANGELOG.md 里 `## vX.Y.Z` 那一段
+          awk -v t="$tag" '$0 ~ ("^## " t "($|[ ])") { flag=1; next } substr($0,1,3)=="## " { flag=0 } flag { print }' \
+            CHANGELOG.md > release-notes.raw || true
+
+          # 2) 裁掉段尾的空行与分隔线（段落末尾常带一个 `---`）
+          awk '{ lines[NR] = $0 } END { n = NR; while (n > 0 && (lines[n] ~ /^[[:space:]]*$/ || lines[n] ~ /^-+[[:space:]]*$/)) n--; for (i = 1; i <= n; i++) print lines[i] }' \
+            release-notes.raw > release-notes.md || true
+
+          if [ ! -s release-notes.md ]; then
+            echo "> ⚠️ 本版未在 \`CHANGELOG.md\` 写说明，请补充后重新发版。" > release-notes.md
+          fi
+
+          prev="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
+          {
+            echo
+            echo "---"
+            if [ -n "$prev" ]; then
+              echo "**完整变更对比**：https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${tag}"
+            fi
+            echo
+            echo "**安装包**见下方 Assets：Android 用 \`*-android.apk\`；iOS 用 \`*-ios-unsigned.ipa\`（需自签）。"
+            echo
+            echo "> Android 安装包已用固定正式签名，可直接覆盖安装升级。"
+          } >> release-notes.md
+
+          echo "----- 将写入的发布说明 -----"
+          cat release-notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
-          generate_release_notes: true
+          body_path: release-notes.md

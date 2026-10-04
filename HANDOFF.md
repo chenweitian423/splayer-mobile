@@ -20,7 +20,7 @@
 > | 网络 | ★ GitHub 走**固定代理 `http://192.168.123.11:1061`**（全局记忆已记）；Release 资产用 `gh release download` + 代理最快 |
 > | 底部导航 | 首页 / 搜索 / 历史 / 插件 / 设置（5 个标签） |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 18:20（v1.0.9 已发布；APK 签名指纹已实测与本地 keystore 一致） |
+> | 最后更新 | 2026-10-04 18:35（v1.0.9；已建 CHANGELOG.md 并回填 v1.0.0~v1.0.9 全部 Release 说明） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
@@ -57,6 +57,9 @@
 > - ★★ **WebView 启动要限流**：8 支组件一起 `boot()` 时，低端机会「运行时初始化超时」甚至被系统杀进程（对应反馈里的「组件未加载」）。`PluginEngine.maxConcurrentBoots = 3` 排队启动；`boot()` 外壳就绪阶段 30s × 2 次重试（组件源码注入阶段不重试，那是组件自身的问题）。
 > - **release 包异常是静默的**：必须装 `ErrorLog.install()`（`FlutterError.onError` + `PlatformDispatcher.onError`）落盘到 `<appDocs>/error.log`，设置页可一键复制 —— 否则用户只能说「闪退」，拿不到堆栈。
 > - ★ **换了签名 key 就必须卸载重装一次**：debug key → release key 属于不同签名，系统直接拒绝覆盖安装。**keystore 丢了就永久失去覆盖升级能力**，务必多处备份。
+> - ★★ **每次发版前先在 `CHANGELOG.md` 补一段 `## vX.Y.Z`**：CI 的 `release` job 会取该段作为 Release 正文（取不到会打印「未在 CHANGELOG.md 写说明」）。段尾的分隔线与空行会被自动裁掉。
+> - **发版流程固定为三步**：① `pubspec.yaml` 升版本 ② `CHANGELOG.md` 补该版本段落 ③ `git tag -a vX.Y.Z && git push origin vX.Y.Z`。
+> - **仓库是公开的**：README/HANDOFF/CHANGELOG 都会公开。用户 2026-10-04 已把 README 里「复刻 / 反编译」相关措辞删掉 —— 对外文案（CHANGELOG、Release 说明）一律只写产品能力，不要提逆向。
 > - ★★ **封面图要带浏览器 UA**：`CachedNetworkImage` 默认发 Dart 的 UA，封面 CDN 会挡。统一走 `lib/ui/poster_image.dart`（UA + `Accept: image/*`；失败再带 Referer 重试一次，优先用 `WidgetRuntime.imageReferer` —— 即组件自己请求站点时用的那个 Referer）。
 > - **MissAV 封面没有后端图片代理**：provider 类组件（51吃瓜/帝果/黄豆/剧果/野果/黄果）的封面由后端**代理好**（`/api/v1/providers/{id}/cover?url=…`，实测 200）；MissAV 只有 `/api/v1/missav/cover-probe`（只返回解析后的 CDN 直链，不代理），客户端必须自己能连上 `fourhoi.com` / `spic2-*.71352.men`。连不上就是网络/内容源侧的问题。
 > - **观看历史的粒度是「媒体 × 剧集」**：`watchEpisodeKey(target, 剧集标题)`；媒体级 key = `pluginId::mediaId`（同一部剧的「继续观看」靠它找最近一条）。记录存在 `<appDocs>/history.json`，上限 500 条，超了丢最旧的。
@@ -91,6 +94,26 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · 补历史版本的更新说明（CHANGELOG + Release 自动带说明）
+
+用户要求：**之前所有版本都要写更新内容**。
+
+**问题**：此前每个 Release 的正文都只有一行自动生成的
+`**Full Changelog**: .../compare/...`（93 字符），没有任何实际说明 —— 因为 workflow 用了
+`generate_release_notes: true`，而仓库一直是直接 push 到 main、没有 PR/issue，自动生成自然没内容。
+
+**做法**：
+1. 新增 **`CHANGELOG.md`**（发布说明的**唯一来源**），按 `## vX.Y.Z` 分段，补写 v1.0.0 → v1.0.9 全部十版。
+   文案只写产品能力，**不提逆向/复刻**（用户已把 README 里这类措辞删掉）。
+2. **回填全部历史 Release**：脚本从 CHANGELOG 取对应段落 → 裁掉段尾 `---`/空行 → 追加
+   「完整变更对比」链接（用 `git describe --tags --abbrev=0 <tag>^` 算上一版）+ 安装包说明 →
+   `gh release edit <tag> --notes-file`。**10/10 成功**。
+3. **让以后自动带上**：改 `build.yml` 的 `release` job —— 加 `actions/checkout`（`fetch-depth: 0`，为了算上一版），
+   新增「生成本次发布说明」步骤（同样的 awk 抽取 + 裁尾），`action-gh-release` 改用 `body_path: release-notes.md`
+   并去掉 `generate_release_notes`。
+
+**新发版流程**：① `pubspec.yaml` 升版本 → ② `CHANGELOG.md` 补 `## vX.Y.Z` 段 → ③ `git tag -a vX.Y.Z && git push origin vX.Y.Z`。
 
 ### 2026-10-04 · v1.0.9 Android 在线更新 + 正式签名 + 装载健壮性 + 错误日志
 
