@@ -11,15 +11,16 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.9（待发布）**：Android 在线更新 + 正式签名 + 装载健壮性 + 错误日志；上一发布 v1.0.8 |
+> | 版本 | **v1.0.9 已发布**（tag `v1.0.9` → Release，APK 55.7MB + 未签名 IPA 23.8MB）；上一版 v1.0.8 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1）；**同时启动上限 3 个** |
 > | 校验 | v1.0.9 容器内：`flutter analyze` **零问题**、Dart 单测 **58/58**；Node 契约 **17/17** |
-> | 签名 | ★ 已配 4 个 GitHub Secrets，CI 用**同一把 release key** 出包（此前是 CI 临时 debug key，会变） |
+> | 签名 | ★ 已配 4 个 GitHub Secrets；**已实测 v1.0.9 的 APK 证书指纹与本地 release keystore 逐字一致** |
 > | 真机进度 | v1.0.4 分页 ✅、v1.0.5 三项 ✅；MissAV 封面放弃；v1.0.6~v1.0.9 待复验 |
+> | 网络 | ★ GitHub 走**固定代理 `http://192.168.123.11:1061`**（全局记忆已记）；Release 资产用 `gh release download` + 代理最快 |
 > | 底部导航 | 首页 / 搜索 / 历史 / 插件 / 设置（5 个标签） |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 18:10（v1.0.9：在线更新 / 正式签名 / 装载健壮性 / 错误日志） |
+> | 最后更新 | 2026-10-04 18:20（v1.0.9 已发布；APK 签名指纹已实测与本地 keystore 一致） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
@@ -115,6 +116,21 @@
 
 **新增测试** `test/update_test.dart`（7 条：版本解析与数字比较）。版本 `1.0.8+9` → `1.0.9+10`。
 验证：容器 analyze 零问题、Dart **58/58**、Node 契约 **17/17**。
+
+**已发布 Release `v1.0.9`**（tag 指向 `319bc2d`，CI run `37192811720` 四 job 全绿）
+<https://github.com/chenweitian423/splayer-mobile/releases/tag/v1.0.9>
+- `SPlayerMobile-v1.0.9-android.apk` 55.7 MB sha256 `a6f587be…df79`
+- `SPlayerMobile-v1.0.9-ios-unsigned.ipa` 23.8 MB sha256 `a074a0ff…d0295`
+
+**签名自证（已实测）**：CI 日志出现「已使用仓库 secrets 中的正式签名」；APK 证书指纹
+`SHA1 77:E1:89:F8:A5:74:75:C9:29:68:FB:78:1D:8B:D6:2E:08:73:AC:4F` /
+`SHA256 5A:C6:18:BD:3E:B1:4E:0A:A3:5F:90:5A:83:6A:9E:50:95:26:D1:3E:20:4C:58:58:5D:16:C3:E6:0C:12:1C:9B`
+与 `.signing/upload-keystore.jks` 的证书**逐字一致** —— 覆盖升级链路成立。
+
+本地产物：`F:\codex项目\播放器app\build\release\v1.0.9\`（sha256 已核对）。
+> ⚠️ **签名材料 `.signing/` 务必多地备份**；丢了就永久失去「在线更新覆盖安装」的能力。
+> 网络：GitHub 走固定代理 **`http://192.168.123.11:1061`**；Release 资产用
+> `HTTPS_PROXY=... gh release download <tag> -D <dir> --clobber` 最快（curl 经代理会 502）。
 
 ### 2026-10-04 · v1.0.8 剧集自动连播
 
