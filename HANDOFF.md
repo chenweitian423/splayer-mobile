@@ -90,7 +90,14 @@
 
 **新增测试** `test/paging_test.dart`：`mergePage` 4 条单测 + 2 条 widget 测试（**断言 `PosterGrid` 传了 controller 后 `controller.hasClients == true`**，直接防这次的回归）。版本 `1.0.3+4` → `1.0.4+5`。
 
-> 状态：**容器验证通过** —— `flutter analyze` 零问题、Dart 单测 27/27（含新增 6 条）、Node 契约 17/17。待真机复验分页。
+> 状态：**容器验证通过** —— `flutter analyze` 零问题、Dart 单测 27/27（含新增 6 条）、Node 契约 17/17。**CI 全绿**（run `37182547541`：静态检查/单测 45s、Android APK 4m32s、iOS 未签名 IPA 3m25s）。待真机复验分页。
+
+**本地产物**（从本次 CI 拉下，可直接装）：
+
+| 文件 | 大小 | md5 |
+|---|---|---|
+| `F:\codex项目\播放器app\build\ci-artifacts\android-apk\SPlayerMobile-main-android.apk` | 57.6 MB | `168061cd4f5be5393632b3d2f95ec15a` |
+| `F:\codex项目\播放器app\build\ci-artifacts\ios-ipa\SPlayerMobile-main-ios-unsigned.ipa` | 24.8 MB | `5a2b1d009a34fde8ddfcbd899e449f6e` |
 
 ### 2026-10-04 · 工程迁移到 F:\codex项目\播放器app（新工作空间）
 
