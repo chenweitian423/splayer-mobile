@@ -11,7 +11,7 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.3**（tag 已推，Release 挂 APK + 未签名 IPA；迁移文档已 commit，本地领先 origin/main 1 个提交、待 push） |
+> | 版本 | **v1.0.3**（tag 已推，Release 挂 APK + 未签名 IPA；工程迁移已完成并与 origin/main 同步） |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
 > | 校验 | `flutter analyze` 零问题、Dart 单测 **21/21**、Node 桥接契约 **17/17**（CI 全绿，四 job：analyze/android/ios/release） |
@@ -77,8 +77,10 @@
 - **新布局**：工作空间根 = Flutter 工程根（`pubspec.yaml` / `lib/` / `android/` / `ios/` / `assets/` / `tools/` 直接位于根下），不再有 `splayer_mobile` 子目录。
 - **迁移内容**：整个 git 仓库（含 `.git` 历史与 remote，HEAD `cbf6de1` 不变）、`_recon/`（逆向现场资产）、`.workbuddy/memory/`（10-03、10-04 日志）。
 - **未迁移**：`build/`(941M)、`.dart_tool/`(52M) —— 可再生，需要时跑一次 `flutter pub get` / 构建即可；正式校验走容器（持久 pub 缓存卷）。
-- **.gitignore 追加** `_recon/` 与 `.workbuddy/`，保证 `git status` 干净、现场资产不入库。
+- **.gitignore 追加** `_recon/`、`.workbuddy/`、`NEW-CHAT-PROMPT.md`，保证 `git status` 干净、现场资产不入库。
 - **启动语** 已更新为：`接着做 SPlayer Mobile 项目：先读 F:\codex项目\播放器app\HANDOFF.md 顶部的「⚡ 启动包」，照它继续。`
+- 迁移文档提交 `1bcb891` **已 push 到 origin/main**（本地与远端一致）。
+- **旧目录 `C:\Users\47403\WorkBuddy\2026-10-03-23-40-41\` 已清理**：迁移前做过文件级核对（两侧各 119 个文件、零差异），确认新空间为唯一完整副本后，旧的 `build\`/`.dart_tool\` 缓存直接删除，其余源码树连同 `_recon\` 一并移入**回收站**（可恢复）。
 
 ### 2026-10-04 · v1.0.3 MissAV 播放不了 + 播放器补齐选集/竖滑/倍速
 
