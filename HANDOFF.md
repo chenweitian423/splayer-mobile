@@ -11,15 +11,16 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.7 已发布**（tag `v1.0.7` → Release，挂 APK 55.5MB + 未签名 IPA 23.7MB）；上一版 v1.0.6 |
+> | 版本 | **v1.0.8（待发布）**：剧集自动连播；上一发布 v1.0.7 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
-> | 校验 | v1.0.7 容器内：`flutter analyze` **零问题**、Dart 单测 **46/46**（paging 6 + poster_image 5 + history 7 + layout 7）；Node 契约 **17/17** |
-> | 真机进度 | v1.0.4 分页已验 OK；**v1.0.5 / v1.0.6 / v1.0.7 待复验** |
+> | 校验 | v1.0.8 容器内：`flutter analyze` **零问题**、Dart 单测 **51/51**（paging 6 + poster_image 5 + history 7 + layout 7 + autoplay 5）；Node 契约 **17/17** |
+> | 真机进度 | v1.0.4 分页 ✅、v1.0.5 三项（分区保活/进度条/封面图）✅；**MissAV 封面确认无解、暂时放弃**；v1.0.6/7/8 待复验 |
 > | 自适应 | 宽 >= 600dp（横屏/平板）自动切**左侧导航栏**，内容限宽 1100dp；海报行高随可用高度收缩（150~210） |
+> | 设置项 | 自动连播下一集（`AppSettings`，落盘 shared_preferences）；播放页底栏也有一键开关 |
 > | 底部导航 | 首页 / 搜索 / 历史 / 插件 / 设置（5 个标签） |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 15:55（v1.0.7：屏幕自适应 + 全屏/横竖屏按钮） |
+> | 最后更新 | 2026-10-04 16:35（v1.0.8：剧集自动连播） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
@@ -31,12 +32,11 @@
 > ```
 >
 > **③ 下一步待办（按优先级）**
-> 1. **真机复测 v1.0.7**：① 播放页右上「全屏」→ 应横屏 + 隐藏状态栏/标题栏，点屏幕可呼出/收起控制条（5 秒自动隐藏）；② 右上「横竖屏」按钮只切方向、不隐藏界面；③ 退出播放页后方向锁要**放开**、状态栏恢复。
-> 2. **真机复测 v1.0.7 自适应**：手机转横屏 → 底部导航栏应变成**左侧导航栏**，海报行变矮（不再占半个屏）。平板同理。
-> 3. **真机复测 v1.0.6 进度记忆**：播到中段退出 → 详情页显示「继续观看 · mm:ss」→ 续播；历史标签可左滑删/清空。
-> 4. **真机复测 v1.0.5 三项**：首页滑到第 4 个分区再滑回不重载；进度条可拖；封面图出图比例。
-> 5. **MissAV 封面如仍大量失败**：走 **设置 → 网络日志 → 复制**。已知 MissAV 封面走 CDN 直连、后端无代理端点。
-> 6. 待补能力：`Widget.tmdb`、`sectionMode`、字幕/弹幕面板、收藏夹、TV 大屏布局。
+> 1. **真机复测 v1.0.8 自动连播**：播一部多集剧，结局时应自动接下一集并飘提示「自动播放下一集：第 N 集」；最后一集停下并提示「已经是最后一集」。底栏 `playlist_play` 图标可一键开关（设置页也有）。**注意**：电影的多线路不会自动跳（那不是「剧集」，自动跳会变成换线路）。
+> 2. **真机复测 v1.0.7**（若还没验）：全屏按钮 / 横竖屏按钮 / 转横屏后底部导航变左侧 / 退出播放页恢复竖屏与状态栏。
+> 3. **真机复测 v1.0.6**：进度记忆续播 + 历史页删除/清空。
+> 4. **MissAV 封面**已确认无解（后端无代理、CDN 客户端不可达），**暂时放弃**；若以后想救，只能靠客户端网络能到 `fourhoi.com`/`spic2-*.71352.men`。
+> 5. 待补能力：`Widget.tmdb`、`sectionMode`、字幕/弹幕面板、收藏夹、TV 大屏布局、跳过片头片尾。
 >
 > **④ 铁律（踩过的坑）**
 > - **不要试图 1:1 反编译还原**：原 TV 版是 Kotlin+Compose 编译产物（78MB / 13 dex / R8 混淆），Compose 编译期变换不可逆。只做 clean-room（同规范、同模型、同能力）。
@@ -50,6 +50,8 @@
 > - ★★ **全屏手势层会抢进度条**：播放页原本用 `GestureDetector(onVerticalDragEnd:)` 包住整屏，进度条（`VideoProgressIndicator`）轨道只有几像素、命中区太窄，横拖经常抢不过手势 → 「拖不动」。正解是**手势层只包视频区**，控制条放在它外面，并用自带 ~48dp 命中高度的 `Slider`。
 > - ★ **方向锁 / 沉浸式是全局状态，退出播放页必须还原**：`SystemChrome.setPreferredOrientations(const [])` 放开方向、`setEnabledSystemUIMode(edgeToEdge)` 把状态栏还回来。否则回到首页还卡在横屏、状态栏也没了。还原写在播放页 `dispose()` 里。
 > - **自适应只用一处断点常量**：`lib/ui/layout.dart` —— `kRailBreakpoint = 600`（宽 ≥ 600dp 用左侧导航栏）+ `posterRowHeight/posterCardWidth`（海报行随可用高度收缩到 150~210）。别在各页面各写一套魔法数字。
+> - ★ **自动连播只在「剧集」模式生效**：`PlayerPage.episodes` 是统一队列 —— 剧集是「集」，电影是「多个线路」。自动跳对后者等于**换线路**，是错的。判定统一走 `shouldAutoAdvance()`（`lib/models/play_queue.dart`），并由详情页传 `episodeList: true/false`。
+> - **播完判定要防重入**：`_onTick` 每帧都跑，靠 `_completionHandled` 一次性标记；`_load()` 里必须把它重置回 false，否则切下一集后不会再触发。
 > - ★★ **封面图要带浏览器 UA**：`CachedNetworkImage` 默认发 Dart 的 UA，封面 CDN 会挡。统一走 `lib/ui/poster_image.dart`（UA + `Accept: image/*`；失败再带 Referer 重试一次，优先用 `WidgetRuntime.imageReferer` —— 即组件自己请求站点时用的那个 Referer）。
 > - **MissAV 封面没有后端图片代理**：provider 类组件（51吃瓜/帝果/黄豆/剧果/野果/黄果）的封面由后端**代理好**（`/api/v1/providers/{id}/cover?url=…`，实测 200）；MissAV 只有 `/api/v1/missav/cover-probe`（只返回解析后的 CDN 直链，不代理），客户端必须自己能连上 `fourhoi.com` / `spic2-*.71352.men`。连不上就是网络/内容源侧的问题。
 > - **观看历史的粒度是「媒体 × 剧集」**：`watchEpisodeKey(target, 剧集标题)`；媒体级 key = `pluginId::mediaId`（同一部剧的「继续观看」靠它找最近一条）。记录存在 `<appDocs>/history.json`，上限 500 条，超了丢最旧的。
@@ -84,6 +86,23 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · v1.0.8 剧集自动连播
+
+用户反馈：v1.0.5 三项（分区保活/进度条/封面图）真机通过；MissAV 封面仍不行，**暂时放弃**（已确认后端无代理、CDN 客户端不可达）；新增需求「剧集自动播放下一集」。
+
+**关键设计：先分清「剧集」和「线路」**。`PlayerPage.episodes` 是统一队列 —— 剧集模式下是「第 N 集」，电影模式下是「同一部片的多个线路」。对后者自动跳等于**换线路**，不是连播。所以：
+- 详情页新增 `_isEpisodeMode`（`detail.allEpisodes.isNotEmpty`），以 `episodeList` 传给播放页。
+- 判定收敛成纯函数 `shouldAutoAdvance(currentIndex, total, enabled, episodeList)`（`lib/models/play_queue.dart`），4 个条件缺一不可。
+
+**实现**：
+- 新增 `lib/store/app_settings.dart`：`autoPlayNext`（默认开），落盘 shared_preferences，`main()` 里 `load()`。
+- `player_page.dart`：`_onTick` 里判「位置贴到时长且已停」→ `_handleCompletion()`：先把 position 按总时长写入历史（= 记「已看完」），再按 `shouldAutoAdvance` 决定切下一集（飘提示「自动播放下一集：xxx」）或停住（最后一集提示「已经是最后一集」）。`_completionHandled` 防重入，`_load()` 里重置。
+- 底栏 + 全屏悬浮行加 `playlist_play` 一键开关（仅剧集模式显示）；设置页加 `SwitchListTile`。
+
+**新增测试** `test/autoplay_test.dart`（5 条）：正常连播、最后一集不连播、开关关掉不连播、非剧集模式不连播、单条/0 条不连播。
+
+版本 `1.0.7+8` → `1.0.8+9`。验证：容器 analyze 零问题、Dart **51/51**、Node 契约 **17/17**。
 
 ### 2026-10-04 · v1.0.7 屏幕自适应 + 播放器全屏 / 横竖屏切换
 

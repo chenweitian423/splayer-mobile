@@ -145,6 +145,9 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
+  /// 队列是「剧集」还是「同一部片的多个线路」—— 只有前者才做自动连播。
+  bool get _isEpisodeMode => _detail?.allEpisodes.isNotEmpty ?? false;
+
   void _play(int index, {bool fromStart = false}) {
     final queue = _queue;
     if (queue.isEmpty) return;
@@ -158,6 +161,7 @@ class _DetailPageState extends State<DetailPage> {
               target: _target,
               fallbacks: _fallbacks,
               fromStart: fromStart,
+              episodeList: _isEpisodeMode,
             ),
           ),
         )

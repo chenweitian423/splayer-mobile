@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../runtime/plugin_engine.dart';
+import '../store/app_settings.dart';
 import '../store/history_store.dart';
 import '../store/plugin_store.dart';
 import 'history_page.dart';
@@ -20,6 +21,7 @@ class SettingsPage extends StatelessWidget {
         PluginStore.instance,
         PluginEngine.instance,
         HistoryStore.instance,
+        AppSettings.instance,
       ]),
       builder: (context, _) {
         final records = PluginStore.instance.records;
@@ -31,6 +33,13 @@ class SettingsPage extends StatelessWidget {
               leading: const Icon(Icons.extension_outlined),
               title: const Text('已安装组件'),
               trailing: Text('${records.length} 个（已装载 $loaded）'),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.playlist_play),
+              title: const Text('自动连播下一集'),
+              subtitle: const Text('一集播完自动接下一集（仅剧集生效）'),
+              value: AppSettings.instance.autoPlayNext,
+              onChanged: (value) => AppSettings.instance.setAutoPlayNext(value),
             ),
             ListTile(
               leading: const Icon(Icons.history),

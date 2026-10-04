@@ -7,6 +7,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'runtime/plugin_engine.dart';
+import 'store/app_settings.dart';
 import 'store/history_store.dart';
 import 'store/plugin_store.dart';
 import 'ui/history_page.dart';
@@ -20,6 +21,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await PluginStore.instance.load();
   await HistoryStore.instance.load();
+  await AppSettings.instance.load();
   runApp(const SPlayerApp());
 }
 

@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/play_queue.dart';
+import '../store/app_settings.dart';
 import '../store/history_store.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -20,6 +21,7 @@ class PlayerPage extends StatefulWidget {
     this.initialIndex = 0,
     this.fallbacks = const <PlayItem>[],
     this.fromStart = false,
+    this.episodeList = false,
   });
 
   /// 播放队列：剧集就是「集」，电影多线路就是「线路」。
@@ -36,6 +38,9 @@ class PlayerPage extends StatefulWidget {
   /// 为真时忽略已存的进度、从头播（「从头播放」按钮）。
   final bool fromStart;
 
+  /// 队列语义是「剧集」而不是「同一部片的多个线路」—— 只有剧集才自动连播。
+  final bool episodeList;
+
   @override
   State<PlayerPage> createState() => _PlayerPageState();
 }
@@ -50,6 +55,9 @@ class _PlayerPageState extends State<PlayerPage> {
   String _triedUrl = '';
   bool _showEpisodeHint = false;
   String _hintText = '';
+
+  /// 本集是否已经走到「播完」逻辑（防止 _onTick 反复触发）。
+  bool _completionHandled = false;
 
   // ---- 全屏 / 方向 ----
   bool _fullscreen = false;
@@ -72,6 +80,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   /// 依次尝试候选地址，全部失败才报错（mpv 变体 → hls 兼容 → 备用线路）。
   Future<void> _load({required int candidateIndex}) async {
+    _completionHandled = false;
     final candidates = _candidates;
     if (candidates.isEmpty) {
       setState(() {
@@ -131,8 +140,49 @@ class _PlayerPageState extends State<PlayerPage> {
 
   void _onTick() {
     if (!mounted) return;
+    final controller = _controller;
+    if (controller != null) {
+      final value = controller.value;
+      // 播到末尾（位置贴到时长且已停）→ 走「本集播完」逻辑。
+      if (value.isInitialized &&
+          value.duration > Duration.zero &&
+          !value.isPlaying &&
+          value.position >= value.duration - const Duration(milliseconds: 500)) {
+        unawaited(_handleCompletion());
+      }
+    }
     setState(() {});
     _maybeSaveProgress();
+  }
+
+  /// 本集播完：记「已看完」，再按设置决定是否自动接下一集。
+  Future<void> _handleCompletion() async {
+    if (_completionHandled) return;
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    final totalMs = controller.value.duration.inMilliseconds;
+    if (totalMs <= 0) return;
+    _completionHandled = true;
+
+    await _saveProgress(controller, positionMs: totalMs);
+
+    final hasNext = shouldAutoAdvance(
+      currentIndex: _index,
+      total: widget.episodes.length,
+      enabled: AppSettings.instance.autoPlayNext,
+      episodeList: widget.episodeList,
+    );
+    if (!hasNext) {
+      if (widget.episodeList && widget.episodes.length > 1 && _index + 1 >= widget.episodes.length) {
+        _flashHint('已经是最后一集');
+      }
+      return;
+    }
+
+    final next = _index + 1;
+    _flashHint('自动播放下一集：${widget.episodes[next].title}');
+    setState(() => _index = next);
+    await _load(candidateIndex: 0);
   }
 
   String get _recordKey => watchEpisodeKey(widget.target, _current.title);
@@ -360,6 +410,22 @@ class _PlayerPageState extends State<PlayerPage> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制，直接发我即可')));
   }
 
+  /// 自动连播开关（只在剧集模式下出现）。
+  Widget _autoPlayNextButton() {
+    return ListenableBuilder(
+      listenable: AppSettings.instance,
+      builder: (context, _) {
+        final on = AppSettings.instance.autoPlayNext;
+        return IconButton(
+          tooltip: on ? '自动连播：开' : '自动连播：关',
+          onPressed: () => AppSettings.instance.setAutoPlayNext(!on),
+          color: on ? Theme.of(context).colorScheme.primary : null,
+          icon: Icon(on ? Icons.playlist_play : Icons.playlist_remove, size: 22),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
@@ -454,6 +520,7 @@ class _PlayerPageState extends State<PlayerPage> {
                           onOrientation: _toggleOrientation,
                           landscape: _landscape,
                           onExitFullscreen: _toggleFullscreen,
+                          autoPlayToggle: (widget.episodeList && widget.episodes.length > 1) ? _autoPlayNextButton() : null,
                         ),
                         if (ready) _Controls(controller: controller, fmt: _fmt, transparent: true),
                       ],
@@ -513,6 +580,7 @@ class _PlayerPageState extends State<PlayerPage> {
                         icon: const Icon(Icons.list_alt, size: 18),
                         label: Text('选集 ${_index + 1}/${widget.episodes.length}'),
                       ),
+                    if (widget.episodeList && widget.episodes.length > 1) _autoPlayNextButton(),
                     const Spacer(),
                     if (_candidates.length > 1)
                       TextButton.icon(
@@ -736,6 +804,7 @@ class _FullscreenActions extends StatelessWidget {
     required this.onOrientation,
     required this.landscape,
     required this.onExitFullscreen,
+    this.autoPlayToggle,
   });
 
   final String? episodeLabel;
@@ -747,6 +816,9 @@ class _FullscreenActions extends StatelessWidget {
   final VoidCallback onOrientation;
   final bool landscape;
   final VoidCallback onExitFullscreen;
+
+  /// 「自动连播」开关（剧集模式才有）。
+  final Widget? autoPlayToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -761,6 +833,7 @@ class _FullscreenActions extends StatelessWidget {
             TextButton(onPressed: onSources, style: style, child: Text(sourceLabel!)),
           TextButton(onPressed: onSpeed, style: style, child: Text(speedLabel)),
           const Spacer(),
+          if (autoPlayToggle != null) autoPlayToggle!,
           IconButton(
             tooltip: landscape ? '切换为竖屏' : '切换为横屏',
             color: Colors.white,

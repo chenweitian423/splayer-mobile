@@ -51,6 +51,21 @@ String? rewriteMpvToHls(String url) {
   return url.replaceAllMapped(pattern, (match) => '${match.group(1)}player=hls');
 }
 
+/// 一集播完是否该自动切下一集。
+///
+/// 三个前提缺一不可：
+///   * 开关打开；
+///   * 队列是「剧集」而不是「同一部片的多个线路」—— 后者自动跳会变成换线路，
+///     不是用户想要的「连播」；
+///   * 后面确实还有。
+bool shouldAutoAdvance({
+  required int currentIndex,
+  required int total,
+  required bool enabled,
+  required bool episodeList,
+}) =>
+    enabled && episodeList && total > 1 && currentIndex + 1 < total;
+
 /// 生成播放候选：
 ///   1. 若声明了 mpv 内核（URL 带 `player=mpv` 或 playerType=mpv），先试 hls 兼容变体；
 ///   2. 再试原地址；
