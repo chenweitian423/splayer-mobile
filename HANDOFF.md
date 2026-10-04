@@ -11,7 +11,7 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.7（待发布）**：屏幕自适应 + 播放器全屏/横竖屏切换；上一发布 v1.0.6 |
+> | 版本 | **v1.0.7 已发布**（tag `v1.0.7` → Release，挂 APK 55.5MB + 未签名 IPA 23.7MB）；上一版 v1.0.6 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
 > | 校验 | v1.0.7 容器内：`flutter analyze` **零问题**、Dart 单测 **46/46**（paging 6 + poster_image 5 + history 7 + layout 7）；Node 契约 **17/17** |
@@ -106,6 +106,11 @@
 **新增测试** `test/layout_test.dart`（7 条）：导航断点、横竖判定、行高上下限与线性区间、卡片宽度夹取、网格边长。
 
 版本 `1.0.6+7` → `1.0.7+8`。验证：容器 analyze 零问题、Dart **46/46**、Node 契约 **17/17**。
+
+**已发布 Release `v1.0.7`**（tag 指向 `ba93690`，CI run `37186828001` 四 job 全绿）
+<https://github.com/chenweitian423/splayer-mobile/releases/tag/v1.0.7>
+- `SPlayerMobile-v1.0.7-android.apk` 55.5 MB sha256 `2940eb24…784c`
+- `SPlayerMobile-v1.0.7-ios-unsigned.ipa` 23.7 MB sha256 `493abb59…9270`
 
 ### 2026-10-04 · v1.0.6 播放进度记忆 + 观看历史
 
