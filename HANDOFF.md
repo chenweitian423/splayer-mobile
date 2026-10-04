@@ -11,13 +11,14 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.9 已发布**（tag `v1.0.9` → Release，APK 55.7MB + 未签名 IPA 23.8MB）；上一版 v1.0.8 |
+> | 版本 | **v1.0.10 已发布**（修 v1.0.9 首页卡死）；上一版 v1.0.9 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
-> | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1）；**同时启动上限 3 个** |
-> | 校验 | v1.0.9 容器内：`flutter analyze` **零问题**、Dart 单测 **58/58**；Node 契约 **17/17** |
-> | 签名 | ★ 已配 4 个 GitHub Secrets；**已实测 v1.0.9 的 APK 证书指纹与本地 release keystore 逐字一致** |
-> | 真机进度 | v1.0.4 分页 ✅、v1.0.5 三项 ✅；MissAV 封面放弃；v1.0.6~v1.0.9 待复验 |
-> | 网络 | ★ GitHub 走**固定代理 `http://192.168.123.11:1061`**（全局记忆已记）；Release 资产用 `gh release download` + 代理最快 |
+> | 运行时 | 每个组件一个 WebView 沙箱；**装载并发上限 3（`BootGate`，名额直接交接）+ 75s 整体看门狗** |
+> | 校验 | v1.0.10 容器内：`flutter analyze` **零问题**、Dart 单测 **62/62**；Node 契约 **17/17** |
+> | 签名 | 4 个 GitHub Secrets 已配；**已实测 v1.0.9/v1.0.10 的 APK 证书指纹与本地 keystore 逐字一致** |
+> | 发布说明 | ★ 唯一来源是 **`CHANGELOG.md`**；CI 自动抽取本版段落作为 Release 正文（v1.0.10 首次跑通） |
+> | 网络 | ★ GitHub 走固定代理 `http://192.168.123.11:1061`；Release 资产用 `HTTPS_PROXY=… gh release download` |
+> | 真机进度 | v1.0.4 分页 ✅、v1.0.5 三项 ✅；**v1.0.9 首页卡死 ❌（已修）**；v1.0.10 待复验 |
 > | 底部导航 | 首页 / 搜索 / 历史 / 插件 / 设置（5 个标签） |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
 > | 最后更新 | 2026-10-04 18:35（v1.0.9；已建 CHANGELOG.md 并回填 v1.0.0~v1.0.9 全部 Release 说明） |
@@ -32,12 +33,11 @@
 > ```
 >
 > **③ 下一步待办（按优先级）**
-> 1. **首次装 v1.0.9 必须卸载重装**：签名从「CI 临时 debug key」换成了**固定 release key**，旧包无法直接覆盖安装（会提示「应用未安装」）。**只此一次**，之后 v1.0.9 → 后续版本就能在设置页「检查更新」里直接升级了。
-> 2. **备份签名材料**：`.signing/`（keystore + 密码 + alias）**丢了就再也无法覆盖升级**，必须复制到安全处。已同步到 GitHub Secrets。
-> 3. **真机复测 v1.0.9**：① 设置页「检查更新」→ 应能查到 v1.0.9 并下载安装（或提示已是最新）；② 播放页全屏**不再有**「点屏幕呼出控制条」那条提示；③ 若再闪退，设置页「错误日志」→ 复制发我。
-> 4. **真机复测 v1.0.8/7/6**：自动连播、全屏/横竖屏、进度记忆、历史页。
-> 5. MissAV 封面已放弃。
-> 6. 待补能力：`Widget.tmdb`、`sectionMode`、字幕/弹幕面板、收藏夹、TV 大屏布局、跳过片头片尾。
+> 1. **真机复测 v1.0.10**：导入组件后首页应正常出内容（v1.0.9 是全部转圈）。若仍失败，首页分区会显示**带「卡在哪一步」的错误横幅**，设置页「错误日志」也会有记录 —— 把那个发我即可精确定位。
+> 2. **v1.0.9 的其它改动一并复验**：在线更新（设置页「检查更新」）、错误日志、全屏无提示条、闪退是否消失。
+> 3. **v1.0.6/7/8 遗留**：进度记忆续播、历史页删除/清空、全屏与横竖屏、剧集自动连播。
+> 4. MissAV 封面已放弃（后端无代理、CDN 客户端不可达）。
+> 5. 待补能力：`Widget.tmdb`、`sectionMode`、字幕/弹幕面板、收藏夹、TV 大屏布局、跳过片头片尾。
 >
 > **④ 铁律（踩过的坑）**
 > - **不要试图 1:1 反编译还原**：原 TV 版是 Kotlin+Compose 编译产物（78MB / 13 dex / R8 混淆），Compose 编译期变换不可逆。只做 clean-room（同规范、同模型、同能力）。
@@ -57,6 +57,9 @@
 > - ★★ **WebView 启动要限流**：8 支组件一起 `boot()` 时，低端机会「运行时初始化超时」甚至被系统杀进程（对应反馈里的「组件未加载」）。`PluginEngine.maxConcurrentBoots = 3` 排队启动；`boot()` 外壳就绪阶段 30s × 2 次重试（组件源码注入阶段不重试，那是组件自身的问题）。
 > - **release 包异常是静默的**：必须装 `ErrorLog.install()`（`FlutterError.onError` + `PlatformDispatcher.onError`）落盘到 `<appDocs>/error.log`，设置页可一键复制 —— 否则用户只能说「闪退」，拿不到堆栈。
 > - ★ **换了签名 key 就必须卸载重装一次**：debug key → release key 属于不同签名，系统直接拒绝覆盖安装。**keystore 丢了就永久失去覆盖升级能力**，务必多处备份。
+> - ★★ **凡是「可能永不返回」的 await，都必须有超时兜底**：`WebView` 的 `loadHtmlString` / `runJavaScript` 在平台视图未挂载时会**永不返回** —— 一旦它被放在锁/闸门里，就会把整个闸门拖死（v1.0.9 首页全部转圈、还没日志就是这么来的）。所有这类调用都加 `.timeout()`，并在外层再加一个整体看门狗。
+> - ★★ **并发闸门别用轮询实现**：`while (used >= max) await Future.delayed(...)` 在「持票者永不归还」时会假死。正解是**名额直接交接**（`release()` 时唤醒队首、计数不变），见 `lib/runtime/boot_gate.dart` + 它的单测。
+> - **WebView 调用前先确认已挂到界面树**：`await SchedulerBinding.instance.endOfFrame`（等一帧）之后再 `loadHtmlString`。
 > - ★★ **每次发版前先在 `CHANGELOG.md` 补一段 `## vX.Y.Z`**：CI 的 `release` job 会取该段作为 Release 正文（取不到会打印「未在 CHANGELOG.md 写说明」）。段尾的分隔线与空行会被自动裁掉。
 > - **发版流程固定为三步**：① `pubspec.yaml` 升版本 ② `CHANGELOG.md` 补该版本段落 ③ `git tag -a vX.Y.Z && git push origin vX.Y.Z`。
 > - **仓库是公开的**：README/HANDOFF/CHANGELOG 都会公开。用户 2026-10-04 已把 README 里「复刻 / 反编译」相关措辞删掉 —— 对外文案（CHANGELOG、Release 说明）一律只写产品能力，不要提逆向。
@@ -94,6 +97,33 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · v1.0.10 修 v1.0.9 首页全部卡死（我自己的回归）
+
+**现象**：v1.0.9 装好后首页每个分区一直转圈、加载不出来，**且没有任何错误日志**。
+
+**根因（v1.0.9 引入）**：我把「同时启动上限 3」用
+`while (_bootingCount >= 3) await Future.delayed(100ms);` **轮询**实现，
+而 `boot()` 里的 `await _controller.loadHtmlString(...)` **没有超时** ——
+WebView 还没挂到界面树时这个 await 可能**永不返回** → `finally` 里的
+`_bootingCount--` 永远不执行 → **名额永不释放 → 后续组件全部排队假死**。
+既不成功也不失败，所以「没错误日志」。**限流的方向没错，实现方式错了。**
+
+**修法（让它可证明不会卡死）**：
+1. 抽出 **`lib/runtime/boot_gate.dart`**：并发闸门，`release()` 时**名额直接交接给队首**
+   （不轮询、不丢名额），并配 `test/boot_gate_test.dart` 4 条回归测试锁住这类 bug。
+2. `boot()` 加载前先 `await SchedulerBinding.instance.endOfFrame` ×2 —— **确保 WebView 已挂上界面树**。
+3. `loadHtmlString` / `_shellReady` / `runJavaScript` / `runJavaScriptReturningResult` **全部加 20s 超时**。
+4. `_stage` 记录当前步骤，引擎加 **75s 整体看门狗**：超时抛
+   「组件「X」装载超时（卡在：<步骤>）」并写进 `ErrorLog` —— 首页错误横幅 + 错误日志双通道可见。
+5. 恢复 20s 单次超时（v1.0.9 改成 30s×2 次重试，让失败要等 60 秒才出现，更像假死）。
+6. 保留 v1.0.9 的正确改动：启动失败/被覆盖的实例一律 `dispose()`（防 WebView 泄漏）。
+
+**教训（写进铁律）**：凡是**可能永不返回**的 await 都必须有超时兜底；并发闸门不要用轮询实现。
+
+版本 `1.0.9+10` → `1.0.10+11`。验证：容器 analyze 零问题、Dart **62/62**。
+**已发布 Release `v1.0.10`**（CI run `37194915372` 四 job 全绿；APK sha256 `be224f23…8a98`、
+证书指纹与 v1.0.9 同一把 release key）。**这是第一次由 CHANGELOG.md 自动生成 Release 正文的版本，跑通。**
 
 ### 2026-10-04 · 补历史版本的更新说明（CHANGELOG + Release 自动带说明）
 
