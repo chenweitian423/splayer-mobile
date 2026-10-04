@@ -242,6 +242,7 @@ class CapyDetail {
     this.episodes = const [],
     this.tags = const [],
     this.customHeaders = const {},
+    this.playerType = '',
   });
 
   final String title;
@@ -257,6 +258,10 @@ class CapyDetail {
   final List<Episode> episodes;
   final List<String> tags;
   final Map<String, String> customHeaders;
+
+  /// 组件对「这条详情该怎么播」的声明（system / mpv / none）。
+  /// MissAV 会在这里给 `system`，而列表项给的是 `none` —— 播放时应以详情为准。
+  final String playerType;
 
   bool get hasVideo => videoUrl.isNotEmpty;
   bool get hasSeasons => seasons.isNotEmpty;
@@ -315,6 +320,7 @@ class CapyDetail {
       episodes: episodes,
       tags: tags,
       customHeaders: headers,
+      playerType: _str(_first(json, const ['playerType', 'player_type'])),
     );
   }
 

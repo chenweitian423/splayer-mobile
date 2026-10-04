@@ -87,6 +87,7 @@ class WidgetRuntime {
   WidgetMeta? _meta;
   bool _booted = false;
   String? _lastError;
+  String? _lastReferer;
   int _seq = 0;
   bool _disposed = false;
   final List<NetLogEntry> _netLogs = <NetLogEntry>[];
@@ -97,6 +98,13 @@ class WidgetRuntime {
   String? get lastError => _lastError;
   bool get isBooted => _booted;
   List<NetLogEntry> get netLogs => List.unmodifiable(_netLogs);
+
+  /// 组件最近一次请求用过的 Referer。
+  ///
+  /// 封面 CDN 普遍做防盗链，而组件自己取图时用的正是它给站点请求的那个 Referer
+  /// （MissAV：`getPageHeaders()` → `Referer: <站点>/`）。宿主渲染封面时把同一个
+  /// Referer 带上，才有机会过校验 —— 这是「图加载不出来」最省事的正解。
+  String get imageReferer => _lastReferer ?? '';
 
   void clearNetLogs() => _netLogs.clear();
 
@@ -449,7 +457,14 @@ class WidgetRuntime {
     final headers = (options['headers'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
     headers.forEach((key, value) {
       final name = key.trim();
-      if (name.isNotEmpty) request.headers[name] = value?.toString() ?? '';
+      if (name.isNotEmpty) {
+        request.headers[name] = value?.toString() ?? '';
+        // 记下组件用的 Referer，供封面图复用（防盗链）。
+        if (name.toLowerCase() == 'referer') {
+          final referer = value?.toString() ?? '';
+          if (referer.isNotEmpty) _lastReferer = referer;
+        }
+      }
     });
     if (body is String && body.isNotEmpty) {
       request.body = body;

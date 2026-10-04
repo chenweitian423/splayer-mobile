@@ -1,7 +1,6 @@
 /// 详情页：链接类条目先走 loadDetail 二次解析，再落到剧集/线路列表。
 library;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/capy_models.dart';
@@ -9,6 +8,7 @@ import '../models/play_queue.dart';
 import '../runtime/widget_runtime.dart';
 import 'common.dart';
 import 'player_page.dart';
+import 'poster_image.dart';
 
 class DetailPage extends StatefulWidget {
   const DetailPage({super.key, required this.runtime, required this.item, this.pluginTitle = ''});
@@ -96,7 +96,8 @@ class _DetailPageState extends State<DetailPage> {
           title: '默认线路',
           url: directUrl,
           headers: _headersOf(widget.item.customHeaders),
-          playerType: widget.item.playerType,
+          // 以「详情」的声明为准：MissAV 列表项给 none，详情才给 system。
+          playerType: (detail?.playerType.isNotEmpty ?? false) ? detail!.playerType : widget.item.playerType,
         ),
       ];
     }
@@ -158,11 +159,11 @@ class _DetailPageState extends State<DetailPage> {
         padding: const EdgeInsets.only(bottom: 32),
         children: <Widget>[
           if (backdrop.isNotEmpty)
-            CachedNetworkImage(
-              imageUrl: backdrop,
+            PosterImage(
+              url: backdrop,
               height: 180,
-              fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => const SizedBox.shrink(),
+              referer: widget.runtime.imageReferer,
+              fallback: const SizedBox(height: 180),
             ),
           Padding(
             padding: const EdgeInsets.all(16),
@@ -172,12 +173,12 @@ class _DetailPageState extends State<DetailPage> {
                 if (poster.isNotEmpty)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
-                    child: CachedNetworkImage(
-                      imageUrl: poster,
+                    child: PosterImage(
+                      url: poster,
                       width: 110,
                       height: 165,
-                      fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                      referer: widget.runtime.imageReferer,
+                      fallback: const SizedBox(width: 110, height: 165),
                     ),
                   ),
                 const SizedBox(width: 14),

@@ -11,13 +11,13 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.4 已发布**（tag `v1.0.4` → Release，挂 APK 54.9MB + 未签名 IPA 23.6MB）；上一版 v1.0.3 |
+> | 版本 | **v1.0.5（待发布）**；上一发布 v1.0.4（分页修复） |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
-> | 校验 | v1.0.4 容器内：`flutter analyze` **零问题**、Dart 单测 **27/27**（含新增 `paging_test.dart` 6 条）；Node 契约 **17/17**（本机跑，Flutter 镜像无 node） |
-> | 真机进度 | iOS 装 v1.0.2 实测：8 支组件都能进详情、多数组件可播；**v1.0.4（分页修复）待真机复验**；v1.0.3（MissAV 播放 + 播放器三件套）也待复验 |
+> | 校验 | v1.0.5 容器内：`flutter analyze` **零问题**、Dart 单测 **32/32**（`paging_test` 6 + `poster_image_test` 5）；Node 契约 **17/17** |
+> | 真机进度 | v1.0.4 已真机验证分页 OK；**v1.0.5 待复验：分区不重载 / 进度条可拖 / 封面图 / MissAV 播放** |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 14:40（v1.0.4 已打 tag 并发 Release；真机分页复验通过） |
+> | 最后更新 | 2026-10-04 15:00（v1.0.5：首页保活 / 进度条可拖 / 封面图请求头 / MissAV 播放链路） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
@@ -29,9 +29,9 @@
 > ```
 >
 > **③ 下一步待办（按优先级）**
-> 1. **真机复测 v1.0.4 分页**（安装最新包）：首页每行横向滚到底应自动续加载下一页（末尾有「加载更多 / 已到底」贴片）；点「全部」进分类网格，向下滑到底应自动加载下一页并显示「已加载全部 N 条」。
-> 2. **真机复测 v1.0.3 遗留项**：MissAV 点播应走 `player=hls` 首选线路（失败自动回落原始线路，底栏「线路 1/2」可手动切）；播放页验「上滑下一集 / 选集面板 / 倍速」。
-> 3. MissAV 若两条线路都失败：走 **设置 → 网络日志 → 复制**，重点看 `/api/v1/subtitles/master.m3u8` 的返回状态，再决定是否上 mpv 内核。
+> 1. **真机复测 v1.0.5**：① 首页滑到第 4 个分区再滑回来，**不应**重新加载；② 播放页进度条可拖动快进；③ 封面图（尤其 MissAV）能出多少。
+> 2. **MissAV 封面如仍大量失败**：走 **设置 → 网络日志 → 复制**。已知：MissAV 封面走的是 CDN 直连（`fourhoi.com` / `spic2-*.71352.men` / DMM），**后端没有 MissAV 的图片代理端点**（`/api/v1/providers/{id}/cover` 只服务 provider 类组件，missav 返回 404）。若 CDN 在客户端网络不可达，属内容源/网络侧，App 无法代偿。
+> 3. **MissAV 播放**：路由已在后端恢复（`/api/v1/discovery/sites/missav/routes` 返回 `www.missav08.com`，`x99-direct`），后端 `/api/v1/subtitles/master.m3u8` 可达。若真机仍失败，抓网络日志看 `master.m3u8` 的状态码再定位。
 > 4. 播放内核升级（可选）：把 `video_player` 换 `media_kit`（native mpv）吃 mpv 专用清单。
 > 5. 待补能力：`Widget.tmdb`、`sectionMode`、TV 大屏布局、字幕/弹幕面板、播放进度记忆。
 >
@@ -43,6 +43,10 @@
 > - ★ **「GitHub 没更新」先分清是 commit 还是 Release**：推 `main` 只更新代码与 Actions 产物（Artifacts）；**Releases 页面只在推 `v*` tag 时才生成**（workflow 的 `release` job 条件是 `startsWith(github.ref, 'refs/tags/v')`）。要出 Release 就 `git tag -a vX.Y.Z && git push origin vX.Y.Z`。
 > - ★★ **`ScrollController` 必须真的挂到滚动组件上**：`_ModuleList` 建了控制器并 `addListener`，但 `PosterGrid` 当时没有 `controller` 参数 → 监听永不触发 → **每个组件只加载第 1 页**（真机现象：下滑不加载后续资源）。凡是「滚到底加载更多」，务必确认控制器确实挂在同一个可滚动组件上，并用 widget 测试断言 `controller.hasClients == true`。
 > - **分页要防「后端不认 page」**：判断是否还有更多不能只看 `items.isNotEmpty`（后端每页返回同一批会无限重复追加）；按 id/标题去重后新增数为 0 就视为到底。统一走 `mergePage()`（`lib/models/paging.dart`）。
+> - ★★ **懒加载列表里的分区必须保活**：`ListView` 的 child 滚出视口会被销毁，State 没了 → `initState` 重新拉网络 → 用户看到「滑回来又加载一遍」。用 `AutomaticKeepAliveClientMixin`（`wantKeepAlive => true` + `super.build(context)`）**加**一层首屏缓存（`_homeSectionCache`，只有下拉刷新才清）。
+> - ★★ **全屏手势层会抢进度条**：播放页原本用 `GestureDetector(onVerticalDragEnd:)` 包住整屏，进度条（`VideoProgressIndicator`）轨道只有几像素、命中区太窄，横拖经常抢不过手势 → 「拖不动」。正解是**手势层只包视频区**，控制条放在它外面，并用自带 ~48dp 命中高度的 `Slider`。
+> - ★★ **封面图要带浏览器 UA**：`CachedNetworkImage` 默认发 Dart 的 UA，封面 CDN 会挡。统一走 `lib/ui/poster_image.dart`（UA + `Accept: image/*`；失败再带 Referer 重试一次，优先用 `WidgetRuntime.imageReferer` —— 即组件自己请求站点时用的那个 Referer）。
+> - **MissAV 封面没有后端图片代理**：provider 类组件（51吃瓜/帝果/黄豆/剧果/野果/黄果）的封面由后端**代理好**（`/api/v1/providers/{id}/cover?url=…`，实测 200）；MissAV 只有 `/api/v1/missav/cover-probe`（只返回解析后的 CDN 直链，不代理），客户端必须自己能连上 `fourhoi.com` / `spic2-*.71352.men`。连不上就是网络/内容源侧的问题。
 > - ★★ **`loadDetail` 只能传字符串**：8 支组件全吃字符串，其中 5 支会把参数直接当 URL 用 —— 传对象就是 `[object Object]`，表现是「详情页报 URI 错、无法播放」。宿主已做「字符串优先 + 对象回退」。
 > - ★★ **桥接参数必须三层编码**：值 → `jsonEncode`（JSON 文本）→ `jsonEncode`（JS 字符串字面量）。
 >   少一层，JS 的 `JSON.parse` 就拿不到字符串，参数静默变 `{}`/`null` —— 现象是「所有组件一起报 `组件传入的是 null`」。
@@ -73,6 +77,31 @@
 | 播放用官方 `video_player` | CI 出包最稳；mpv 能力后置 |
 
 ## 进展记录（倒序）
+
+### 2026-10-04 · v1.0.5 首页保活 / 进度条可拖 / 封面图请求头 / MissAV 链路核对
+
+用户真机反馈三件事 + 要求顺手核掉 v1.0.3 遗留的 MissAV 播放。
+
+**① 首页「滑下去/滑回来都重新加载」**（不合理）
+根因：首页 `ListView` 的每个分区（`_PluginSection`）滚出视口就被销毁，State 没了 → 重新 `initState` → 再打一次网络。
+修法：`_PluginSectionState` 加 `AutomaticKeepAliveClientMixin`（`wantKeepAlive = true`）+ 一层首屏缓存 `_homeSectionCache`（key = recordId），命中缓存直接秒出、**不再请求**；只有下拉刷新（`clearHomeSectionCache()`）才重新拉。
+
+**② 播放页进度条拖不动**
+根因：`GestureDetector(onVerticalDragEnd:)` 包住了**整屏**，而进度条用的是 `VideoProgressIndicator` —— 轨道只有几像素、命中区太窄，横向拖拽经常抢不过整屏的垂直手势。
+修法：**手势层只包视频区**（`Expanded` 里的 GestureDetector），控制条移到它外面；进度条换成自带 ~48dp 命中高度的 `Slider`（`_Scrubber`，拖拽中显示目标位置、松手才 `seekTo`），并补了缓冲指示与播放/暂停 tooltip。
+
+**③ MissAV 封面 99% 加载不出来**
+根因（实测）：封面是**客户端直连 CDN**，`CachedNetworkImage` 发的是 Dart 默认 UA、也不带 Referer，CDN 一律挡；另外 `fourhoi.com` 在部分网络下**根本不可达**（本机 curl = SSL 失败），`spic2-*.71352.men` 返回 403。
+修法：新增 `lib/ui/poster_image.dart` —— 统一带浏览器 UA + `Accept: image/*` 请求，失败再带 Referer 重试一次（优先用组件自己请求站点时用的 Referer：`WidgetRuntime.imageReferer`，没有则退化为图片同源地址）。全部封面位（首页行 / 分类网格 / 搜索 / 详情）都切到它。
+
+**④ MissAV 播放链路核对**（后端实测）
+- 路由**已恢复**：`/api/v1/discovery/sites/missav/routes` → `www.missav08.com`（`x99-direct`）。v1.0.1 那个「Runtime 无线路」已不复现。
+- `/api/v1/subtitles/master.m3u8`、`/api/v1/missav/{prepare,playlists,cover-probe}` 都在（后端 OpenAPI 52 条路径已导出核对）。
+- 宿主侧 `var MISSAV_PLAYER_MODE = "mpv"` 是**顶层 `var`**，会成为 `window` 属性 → `__capyApplyHostPlayerMode("hls")` 能改掉，`player=hls` 链路成立。
+- **修正**：详情页直接用「详情」的 `playerType`（MissAV 列表项给 `none`、详情才给 `system`）—— 新增 `CapyDetail.playerType` 解析。
+
+**新增测试** `test/poster_image_test.dart`（5 条：3 条请求头 + 2 条 `CapyDetail.playerType`）。版本 `1.0.4+5` → `1.0.5+6`。
+验证：容器 `flutter analyze` 零问题、Dart **32/32**、Node 契约 **17/17**。
 
 ### 2026-10-04 · v1.0.4 修「列表只加载第 1 页、下滑不加载后续资源」
 

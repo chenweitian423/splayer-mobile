@@ -30,6 +30,8 @@ class _HomePageState extends State<HomePage> {
         }
         return RefreshIndicator(
           onRefresh: () async {
+            // 下拉刷新 = 唯一主动清缓存的入口：清掉首屏缓存并卸载运行时，全部重新拉。
+            clearHomeSectionCache();
             for (final record in records) {
               PluginEngine.instance.drop(record.id);
             }
@@ -46,6 +48,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
+
+/// 首页分区的首屏缓存：key = `recordId|moduleId`。
+///
+/// 光靠 `AutomaticKeepAliveClientMixin` 还不够 —— 一旦分区被真正重建
+/// （切标签页、增删组件等），没有缓存就会**再打一次网络**，用户看到的就是
+/// 「滑回去又加载一遍」。有缓存则先秒出旧内容，只有下拉刷新才会重新请求。
+final Map<String, List<MediaItem>> _homeSectionCache = <String, List<MediaItem>>{};
+
+void clearHomeSectionCache() => _homeSectionCache.clear();
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
@@ -83,7 +94,7 @@ class _PluginSection extends StatefulWidget {
   State<_PluginSection> createState() => _PluginSectionState();
 }
 
-class _PluginSectionState extends State<_PluginSection> {
+class _PluginSectionState extends State<_PluginSection> with AutomaticKeepAliveClientMixin {
   WidgetRuntime? _runtime;
   CapyModule? _module;
   List<MediaItem> _items = const <MediaItem>[];
@@ -93,6 +104,12 @@ class _PluginSectionState extends State<_PluginSection> {
   int _page = 1;
   String _error = '';
 
+  /// 分区被移出视口后仍保留状态 —— 否则每次滑回来都会 initState 重新拉一遍。
+  @override
+  bool get wantKeepAlive => true;
+
+  String get _cacheKey => widget.record.id;
+
   @override
   void initState() {
     super.initState();
@@ -100,24 +117,34 @@ class _PluginSectionState extends State<_PluginSection> {
   }
 
   Future<void> _boot() async {
+    final cached = _homeSectionCache[_cacheKey];
+    final hasCache = cached != null && cached.isNotEmpty;
     setState(() {
-      _loading = true;
+      _loading = !hasCache;
       _error = '';
-      _items = const <MediaItem>[];
-      _page = 1;
-      _hasMore = false;
+      _items = hasCache ? cached : const <MediaItem>[];
+      _page = hasCache ? 2 : 1;
+      _hasMore = hasCache;
     });
     try {
+      // runtimeFor 命中已有运行时是零成本；即使重建也只是重新注入脚本，不打网络。
       final runtime = await PluginEngine.instance.runtimeFor(widget.record);
       final module = pickHomeModule(runtime.meta?.modules ?? const <CapyModule>[]);
       if (module == null) {
         throw RuntimeException('组件未声明任何可用模块');
       }
-      final items = await runtime.callList(module, overrides: <String, dynamic>{'page': 1});
       if (!mounted) return;
       setState(() {
         _runtime = runtime;
         _module = module;
+      });
+
+      if (hasCache) return; // 有缓存就不重复请求首屏
+
+      final items = await runtime.callList(module, overrides: <String, dynamic>{'page': 1});
+      if (!mounted) return;
+      _homeSectionCache[_cacheKey] = items;
+      setState(() {
         _items = items;
         _page = 2;
         _hasMore = items.isNotEmpty;
@@ -126,7 +153,8 @@ class _PluginSectionState extends State<_PluginSection> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        // 有缓存时保持旧内容，不把错误糊到用户脸上。
+        if (!hasCache) _error = e.toString();
         _loading = false;
       });
     }
@@ -145,6 +173,7 @@ class _PluginSectionState extends State<_PluginSection> {
       setState(() {
         final merged = mergePage(_items, items, _itemKey);
         _items = merged.items;
+        _homeSectionCache[_cacheKey] = merged.items;
         _page += 1;
         // 满页但没有新增（后端忽略 page 或已到末尾）→ 视为到底，避免无限重复。
         _hasMore = items.isNotEmpty && merged.added > 0;
@@ -169,6 +198,7 @@ class _PluginSectionState extends State<_PluginSection> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin 要求
     final title = _module == null ? widget.record.title : '${widget.record.title} · ${_module!.title}';
     return HorizontalPosterRow(
       title: title,
@@ -180,6 +210,7 @@ class _PluginSectionState extends State<_PluginSection> {
       onLoadMore: _loadMore,
       loadingMore: _loadingMore,
       hasMore: _hasMore,
+      referer: _runtime?.imageReferer ?? '',
       onMore: _runtime == null
           ? null
           : () {
@@ -343,6 +374,7 @@ class _ModuleListState extends State<_ModuleList> {
       controller: _scroll,
       items: _items,
       bottomPadding: 24,
+      referer: widget.runtime.imageReferer,
       onTapItem: (item) {
         Navigator.of(context).push(
           MaterialPageRoute<void>(

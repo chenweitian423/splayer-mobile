@@ -1,17 +1,20 @@
 /// 通用 UI 组件。
 library;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/capy_models.dart';
+import 'poster_image.dart';
 
 class PosterCard extends StatelessWidget {
-  const PosterCard({super.key, required this.item, this.onTap, this.width = 120});
+  const PosterCard({super.key, required this.item, this.onTap, this.width = 120, this.referer = ''});
 
   final MediaItem item;
   final VoidCallback? onTap;
   final double width;
+
+  /// 封面防盗链用的 Referer（来自组件运行时）。
+  final String referer;
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +37,11 @@ class PosterCard extends StatelessWidget {
                         color: theme.colorScheme.surfaceContainerHighest,
                         child: Icon(Icons.movie_outlined, color: theme.colorScheme.outline),
                       )
-                    : CachedNetworkImage(
-                        imageUrl: image,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(color: theme.colorScheme.surfaceContainerHighest),
-                        errorWidget: (_, __, ___) => Container(
+                    : PosterImage(
+                        url: image,
+                        referer: referer,
+                        placeholderColor: theme.colorScheme.surfaceContainerHighest,
+                        fallback: Container(
                           color: theme.colorScheme.surfaceContainerHighest,
                           child: Icon(Icons.broken_image_outlined, color: theme.colorScheme.outline),
                         ),
@@ -110,6 +113,7 @@ class HorizontalPosterRow extends StatefulWidget {
     this.onLoadMore,
     this.loadingMore = false,
     this.hasMore = false,
+    this.referer = '',
   });
 
   final String title;
@@ -124,6 +128,9 @@ class HorizontalPosterRow extends StatefulWidget {
   final VoidCallback? onLoadMore;
   final bool loadingMore;
   final bool hasMore;
+
+  /// 封面防盗链用的 Referer（来自组件运行时）。
+  final String referer;
 
   @override
   State<HorizontalPosterRow> createState() => _HorizontalPosterRowState();
@@ -224,6 +231,7 @@ class _HorizontalPosterRowState extends State<HorizontalPosterRow> {
                 }
                 return PosterCard(
                   item: widget.items[index],
+                  referer: widget.referer,
                   onTap: () => widget.onTapItem(widget.items[index]),
                 );
               },
@@ -290,6 +298,7 @@ class PosterGrid extends StatelessWidget {
     this.bottomPadding = 24,
     this.controller,
     this.footer,
+    this.referer = '',
   });
 
   final List<MediaItem> items;
@@ -300,6 +309,9 @@ class PosterGrid extends StatelessWidget {
 
   /// 网格末尾追加的内容（加载中 / 已到底 / 错误重试）。
   final Widget? footer;
+
+  /// 封面防盗链用的 Referer（来自组件运行时）。
+  final String referer;
 
   @override
   Widget build(BuildContext context) {
@@ -324,6 +336,7 @@ class PosterGrid extends StatelessWidget {
             itemBuilder: (context, index) => PosterCard(
               item: items[index],
               width: double.infinity,
+              referer: referer,
               onTap: () => onTapItem(items[index]),
             ),
           ),

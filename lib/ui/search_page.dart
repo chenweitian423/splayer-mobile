@@ -66,6 +66,15 @@ class _SearchPageState extends State<SearchPage> {
     setState(() => _searching = false);
   }
 
+  /// 搜索结果来自多个组件，取第一个拿得出 Referer 的运行时（封面防盗链用）。
+  String get _imageReferer {
+    for (final runtime in _runtimeOfResult.values) {
+      final referer = runtime.imageReferer;
+      if (referer.isNotEmpty) return referer;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -98,6 +107,7 @@ class _SearchPageState extends State<SearchPage> {
                   ? const Center(child: Text('没有结果'))
                   : PosterGrid(
                       items: _results.values.toList(),
+                      referer: _imageReferer,
                       onTapItem: (item) {
                         final key = _results.entries.firstWhere((e) => identical(e.value, item)).key;
                         final runtime = _runtimeOfResult[key];

@@ -240,59 +240,62 @@ class _PlayerPageState extends State<PlayerPage> {
           IconButton(tooltip: '用系统播放器打开', onPressed: _openExternally, icon: const Icon(Icons.open_in_new)),
         ],
       ),
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // 上下滑切集（上滑下一集 / 下滑上一集）
-        onVerticalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          if (velocity < -250) {
-            _switchEpisode(1);
-          } else if (velocity > 250) {
-            _switchEpisode(-1);
-          }
-        },
-        child: Stack(
-          children: <Widget>[
-            Center(
-              child: _error.isNotEmpty && !ready
-                  ? _ErrorView(
-                      error: _error,
-                      url: _triedUrl,
-                      onRetry: () => _load(candidateIndex: 0),
-                      onSwitchSource: _openSourceSheet,
-                      onCopy: _copyError,
-                    )
-                  : _initializing
-                      ? const CircularProgressIndicator()
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            AspectRatio(
-                              aspectRatio: ready ? controller.value.aspectRatio : 16 / 9,
-                              child: ready ? VideoPlayer(controller) : const SizedBox.shrink(),
-                            ),
-                            if (ready) _Controls(controller: controller, fmt: _fmt),
-                          ],
-                        ),
-            ),
-            if (_showEpisodeHint)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: 24,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.72),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(_hintText, style: const TextStyle(color: Colors.white, fontSize: 13)),
+      // ★ 手势层只包住「视频区」，控制条放在它外面 —— 否则全屏的
+      //   onVerticalDragEnd 会和进度条的横向拖拽抢手势，进度条根本拖不动。
+      body: Column(
+        children: <Widget>[
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              // 上下滑切集（上滑下一集 / 下滑上一集）
+              onVerticalDragEnd: (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (velocity < -250) {
+                  _switchEpisode(1);
+                } else if (velocity > 250) {
+                  _switchEpisode(-1);
+                }
+              },
+              child: Stack(
+                children: <Widget>[
+                  Center(
+                    child: _error.isNotEmpty && !ready
+                        ? _ErrorView(
+                            error: _error,
+                            url: _triedUrl,
+                            onRetry: () => _load(candidateIndex: 0),
+                            onSwitchSource: _openSourceSheet,
+                            onCopy: _copyError,
+                          )
+                        : _initializing
+                            ? const CircularProgressIndicator()
+                            : AspectRatio(
+                                aspectRatio: ready ? controller.value.aspectRatio : 16 / 9,
+                                child: ready ? VideoPlayer(controller) : const SizedBox.shrink(),
+                              ),
                   ),
-                ),
+                  if (_showEpisodeHint)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 24,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.72),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(_hintText, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-          ],
-        ),
+            ),
+          ),
+          if (ready) _Controls(controller: controller, fmt: _fmt),
+        ],
       ),
       bottomNavigationBar: (_error.isNotEmpty && !ready)
           ? null
@@ -438,32 +441,78 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final value = controller.value;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Column(
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.fromLTRB(4, 2, 12, 2),
+      child: Row(
         children: <Widget>[
-          VideoProgressIndicator(controller, allowScrubbing: true, padding: const EdgeInsets.symmetric(vertical: 8)),
-          Row(
-            children: <Widget>[
-              IconButton(
-                color: Colors.white,
-                iconSize: 34,
-                onPressed: () => controller.value.isPlaying ? controller.pause() : controller.play(),
-                icon: Icon(value.isPlaying ? Icons.pause_circle : Icons.play_circle),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${fmt(value.position)} / ${fmt(value.duration)}',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-              const Spacer(),
-              Text(
-                controller.value.playbackSpeed == 1.0 ? '' : '${controller.value.playbackSpeed}x',
-                style: const TextStyle(color: Colors.white38, fontSize: 12),
-              ),
-            ],
+          IconButton(
+            color: Colors.white,
+            iconSize: 34,
+            tooltip: value.isPlaying ? '暂停' : '播放',
+            onPressed: () => value.isPlaying ? controller.pause() : controller.play(),
+            icon: Icon(value.isPlaying ? Icons.pause_circle : Icons.play_circle),
+          ),
+          Text(fmt(value.position), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Expanded(child: _Scrubber(controller: controller)),
+          Text(fmt(value.duration), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          SizedBox(
+            width: 18,
+            child: value.isBuffering
+                ? const Center(
+                    child: SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)),
+                  )
+                : null,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 可拖拽进度条。
+///
+/// 用 `Slider` 而不是 `VideoProgressIndicator`：后者轨道只有几像素高、
+/// 触摸区太窄，配合整屏的手势识别器经常抢不到手势，表现就是「拖不动」。
+/// `Slider` 自带 ~48dp 的命中高度，且这里已经和上/下滑切集的手势层分离。
+class _Scrubber extends StatefulWidget {
+  const _Scrubber({required this.controller});
+
+  final VideoPlayerController controller;
+
+  @override
+  State<_Scrubber> createState() => _ScrubberState();
+}
+
+class _ScrubberState extends State<_Scrubber> {
+  double? _dragValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = widget.controller.value;
+    final total = value.duration.inMilliseconds;
+    if (total <= 0) return const SizedBox(height: 40);
+
+    final current = (_dragValue ?? value.position.inMilliseconds.toDouble()).clamp(0.0, total.toDouble());
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        trackHeight: 3,
+        activeTrackColor: Colors.white,
+        inactiveTrackColor: Colors.white24,
+        thumbColor: Colors.white,
+        overlayColor: const Color(0x33FFFFFF),
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+      ),
+      child: Slider(
+        min: 0,
+        max: total.toDouble(),
+        value: current,
+        onChanged: (v) => setState(() => _dragValue = v),
+        onChangeEnd: (v) async {
+          await widget.controller.seekTo(Duration(milliseconds: v.round()));
+          if (mounted) setState(() => _dragValue = null);
+        },
       ),
     );
   }
