@@ -11,13 +11,13 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `F:\codex项目\播放器app`（= 工作空间根，也是 Flutter 工程根） |
-> | 版本 | **v1.0.4**（分页修复）；上一发布 v1.0.3（tag 已推，Release 挂 APK + 未签名 IPA） |
+> | 版本 | **v1.0.4 已发布**（tag `v1.0.4` → Release，挂 APK 54.9MB + 未签名 IPA 23.6MB）；上一版 v1.0.3 |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
 > | 校验 | v1.0.4 容器内：`flutter analyze` **零问题**、Dart 单测 **27/27**（含新增 `paging_test.dart` 6 条）；Node 契约 **17/17**（本机跑，Flutter 镜像无 node） |
 > | 真机进度 | iOS 装 v1.0.2 实测：8 支组件都能进详情、多数组件可播；**v1.0.4（分页修复）待真机复验**；v1.0.3（MissAV 播放 + 播放器三件套）也待复验 |
 > | 现场资产 | 逆向产物都在 **`F:\codex项目\播放器app\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
-> | 最后更新 | 2026-10-04 14:00（v1.0.4 分页修复，容器验证通过：analyze 零问题 / Dart 27/27 / Node 17/17） |
+> | 最后更新 | 2026-10-04 14:40（v1.0.4 已打 tag 并发 Release；真机分页复验通过） |
 >
 > 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
 > ```bash
@@ -40,6 +40,7 @@
 > - **验证 Flutter 必须挂持久 pub 缓存卷**：`docker run -v <proj>:/work -v flutter_pub:/root/.pub-cache ... ghcr.io/cirruslabs/flutter:3.32.0`；否则 `--rm` 一退就报 `Target of URI doesn't exist`、甚至 Flutter 自身 `Matrix4 isn't defined`（假故障）。
 > - **Git Bash 里要先 `export MSYS_NO_PATHCONV=1`**，否则 `-w /work` 被转成 Windows 路径，docker 报 working directory invalid。
 > - **`flutter analyze` 连 info 级 lint 都算失败**（`unnecessary_import`、`unintended_html_in_doc_comment`），必须清零。
+> - ★ **「GitHub 没更新」先分清是 commit 还是 Release**：推 `main` 只更新代码与 Actions 产物（Artifacts）；**Releases 页面只在推 `v*` tag 时才生成**（workflow 的 `release` job 条件是 `startsWith(github.ref, 'refs/tags/v')`）。要出 Release 就 `git tag -a vX.Y.Z && git push origin vX.Y.Z`。
 > - ★★ **`ScrollController` 必须真的挂到滚动组件上**：`_ModuleList` 建了控制器并 `addListener`，但 `PosterGrid` 当时没有 `controller` 参数 → 监听永不触发 → **每个组件只加载第 1 页**（真机现象：下滑不加载后续资源）。凡是「滚到底加载更多」，务必确认控制器确实挂在同一个可滚动组件上，并用 widget 测试断言 `controller.hasClients == true`。
 > - **分页要防「后端不认 page」**：判断是否还有更多不能只看 `items.isNotEmpty`（后端每页返回同一批会无限重复追加）；按 id/标题去重后新增数为 0 就视为到底。统一走 `mergePage()`（`lib/models/paging.dart`）。
 > - ★★ **`loadDetail` 只能传字符串**：8 支组件全吃字符串，其中 5 支会把参数直接当 URL 用 —— 传对象就是 `[object Object]`，表现是「详情页报 URI 错、无法播放」。宿主已做「字符串优先 + 对象回退」。
@@ -92,12 +93,19 @@
 
 > 状态：**容器验证通过** —— `flutter analyze` 零问题、Dart 单测 27/27（含新增 6 条）、Node 契约 17/17。**CI 全绿**（run `37182547541`：静态检查/单测 45s、Android APK 4m32s、iOS 未签名 IPA 3m25s）。待真机复验分页。
 
-**本地产物**（从本次 CI 拉下，可直接装）：
+**本地产物**（从 CI 拉下，可直接装）：
 
 | 文件 | 大小 | md5 |
 |---|---|---|
 | `F:\codex项目\播放器app\build\ci-artifacts\android-apk\SPlayerMobile-main-android.apk` | 57.6 MB | `168061cd4f5be5393632b3d2f95ec15a` |
 | `F:\codex项目\播放器app\build\ci-artifacts\ios-ipa\SPlayerMobile-main-ios-unsigned.ipa` | 24.8 MB | `5a2b1d009a34fde8ddfcbd899e449f6e` |
+
+**已发布 Release**：`v1.0.4`（tag 指向 `14a304d`，workflow run `37183186062` 全绿）
+<https://github.com/chenweitian423/splayer-mobile/releases/tag/v1.0.4>
+- `SPlayerMobile-v1.0.4-android.apk` 54.9 MB sha256 `99d2fb41…9291`
+- `SPlayerMobile-v1.0.4-ios-unsigned.ipa` 23.6 MB sha256 `0ebe89bc…ab0b`
+
+> ⚠️ 注意：**Release 只在推 `v*` tag 时生成**（workflow 的 `release` job 条件是 `startsWith(github.ref, 'refs/tags/v')`）。只推 `main` 的 commit **不会**在 Releases 页面出现——所以「GitHub 没更新」通常是指没打 tag。
 
 ### 2026-10-04 · 工程迁移到 F:\codex项目\播放器app（新工作空间）
 
