@@ -42,6 +42,32 @@ String _originOf(String url) {
   return '${uri.scheme}://${uri.host}';
 }
 
+/* --------------------------------------------------- 失败地址的「黑名单」 */
+
+/// 本进程内已确认取不到的封面地址。
+///
+/// 为什么要它：真机日志里同一个 404 地址在一分钟内被请求了十几次 ——
+/// 列表每次重建都会重来一遍，既浪费流量又把错误日志刷满。
+/// 这里记下已彻底失败的地址，**再次出现时直接出占位图、不发请求**。
+final Map<String, int> _deadImages = <String, int>{};
+int _deadSeq = 0;
+const int _deadImageLimit = 400;
+
+bool isImageDead(String url) => _deadImages.containsKey(url);
+
+void markImageDead(String url) {
+  if (url.isEmpty || _deadImages.containsKey(url)) return;
+  _deadImages[url] = _deadSeq++;
+  if (_deadImages.length <= _deadImageLimit) return;
+  final sorted = _deadImages.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
+  for (final entry in sorted.take(_deadImages.length - _deadImageLimit)) {
+    _deadImages.remove(entry.key);
+  }
+}
+
+/// 下拉刷新时调用：给「上次刚好抽风」的地址一次机会。
+void clearDeadImageCache() => _deadImages.clear();
+
 /// 封面图：先按「浏览器头」请求，失败再带同源 Referer 重试一次。
 class PosterImage extends StatefulWidget {
   const PosterImage({
@@ -99,6 +125,8 @@ class _PosterImageState extends State<PosterImage> {
   Widget build(BuildContext context) {
     final url = widget.url.trim();
     if (url.isEmpty) return widget.fallback ?? _box();
+    // 已经彻底失败的地址：直接出占位图，不再发请求。
+    if (isImageDead(url)) return widget.fallback ?? _box();
 
     return CachedNetworkImage(
       imageUrl: url,
@@ -111,6 +139,11 @@ class _PosterImageState extends State<PosterImage> {
       fadeInDuration: const Duration(milliseconds: 160),
       placeholder: (_, __) => _box(),
       errorWidget: (_, __, ___) {
+        if (_attempt + 1 >= _maxAttempts) {
+          // 两次都失败 → 拉黑，后续重建不再重试。
+          markImageDead(url);
+          return widget.fallback ?? _box();
+        }
         _retryOnce();
         return widget.fallback ?? _box();
       },

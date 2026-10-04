@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/play_queue.dart';
 import '../store/app_settings.dart';
+import '../store/error_log.dart';
 import '../store/history_store.dart';
 
 class PlayerPage extends StatefulWidget {
@@ -101,6 +103,7 @@ class _PlayerPageState extends State<PlayerPage> {
     }
 
     String lastError = '';
+    final failures = <String>[];
     for (var i = candidateIndex; i < candidates.length; i++) {
       final candidate = candidates[i];
       if (!mounted) return;
@@ -112,6 +115,7 @@ class _PlayerPageState extends State<PlayerPage> {
       final controller = VideoPlayerController.networkUrl(
         Uri.parse(candidate.url),
         httpHeaders: candidate.headers,
+        formatHint: _formatHintOf(candidate.url),
       );
       _controller = controller;
       try {
@@ -125,17 +129,42 @@ class _PlayerPageState extends State<PlayerPage> {
         return;
       } catch (e) {
         lastError = e.toString();
+        failures.add('线路 ${i + 1}/${candidates.length}：${candidate.url}\n      → $e');
         await controller.dispose();
         if (identical(_controller, controller)) _controller = null;
         debugPrint('[player] 线路失败（$i/${candidates.length}）：$lastError');
       }
     }
 
+    // ★ 播放失败也记进错误日志。
+    //   以前只在界面上显示，用户说「播放不了」时我们拿不到任何原因 ——
+    //   带上平台与逐条线路的报错，下一份日志就能直接定位。
+    ErrorLog.instance.add(
+      '播放',
+      '平台=${Platform.operatingSystem} 页面=${widget.title} 条目=${_current.title}\n'
+          '${failures.join('\n')}',
+      null,
+    );
+
     if (!mounted) return;
     setState(() {
       _error = candidates.length > 1 ? '全部 ${candidates.length} 条线路都播放失败\n$lastError' : lastError;
       _initializing = false;
     });
+  }
+
+  /// 给播放器一个**格式提示**。
+  ///
+  /// Android 走 ExoPlayer、iOS 走 AVPlayer —— 后者能靠内容嗅探，
+  /// 前者遇到「地址没有扩展名 / Content-Type 不标准」更容易直接报 Source error，
+  /// 这正是「iOS 能播、Android 播不了」最常见的成因之一。
+  /// 这里**只在扩展名明确时**给提示，不乱猜。
+  VideoFormat? _formatHintOf(String url) {
+    final path = Uri.tryParse(url.trim())?.path.toLowerCase() ?? '';
+    if (path.endsWith('.m3u8')) return VideoFormat.hls;
+    if (path.endsWith('.mpd')) return VideoFormat.dash;
+    if (path.endsWith('.mp4') || path.endsWith('.mkv') || path.endsWith('.flv')) return VideoFormat.other;
+    return null;
   }
 
   void _onTick() {

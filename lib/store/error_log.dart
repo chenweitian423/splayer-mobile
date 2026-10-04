@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show NetworkImageLoadException;
 import 'package:path_provider/path_provider.dart';
 
 class ErrorLog extends ChangeNotifier {
@@ -21,20 +22,44 @@ class ErrorLog extends ChangeNotifier {
   final List<String> _entries = <String>[];
   bool _loaded = false;
 
+  /// 被过滤掉的「预期内噪音」条数（封面 404、图片域名不可达之类）。
+  int _filtered = 0;
+
   List<String> get entries => List.unmodifiable(_entries);
   int get count => _entries.length;
+  int get filteredCount => _filtered;
 
   /// 装全局钩子。在 `runApp` 之前调用一次。
   void install() {
     final previous = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
       previous?.call(details);
+      if (_isExpectedNoise(details.exception)) {
+        _filtered++;
+        return;
+      }
       add('框架', details.exception, details.stack);
     };
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+      if (_isExpectedNoise(error)) {
+        _filtered++;
+        return true;
+      }
       add('未捕获', error, stack);
       return true; // 已记录，不让它直接把进程带走
     };
+  }
+
+  /// 封面取不到、图片域名不可达这类错误**量极大且属预期内**，
+  /// 真机上一条日志能被它们刷掉几十条，真正的原因反而看不见 —— 直接不记，
+  /// 只累加一个计数（错误日志页会显示「已忽略 N 条」）。
+  bool _isExpectedNoise(Object error) {
+    if (error is NetworkImageLoadException) return true;
+    final text = error.toString();
+    if (text.contains('Invalid statusCode')) return true; // 图片 CDN 404 / 403
+    if (error is SocketException) return true; // 封面域名不可达
+    if (text.contains('ClientException with SocketException')) return true;
+    return false;
   }
 
   void add(String tag, Object error, StackTrace? stack) {

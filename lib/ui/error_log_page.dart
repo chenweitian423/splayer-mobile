@@ -42,17 +42,33 @@ class ErrorLogPage extends StatelessWidget {
               ),
             ],
           ),
-          body: entries.isEmpty
-              ? const Center(child: Text('暂无错误记录'))
-              : ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: entries.length,
-                  separatorBuilder: (_, __) => const Divider(height: 20),
-                  itemBuilder: (context, index) => SelectableText(
-                    entries[index],
-                    style: const TextStyle(fontSize: 11, height: 1.5, fontFamily: 'monospace'),
+          body: Column(
+            children: <Widget>[
+              if (ErrorLog.instance.filteredCount > 0)
+                Container(
+                  width: double.infinity,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    '已忽略 ${ErrorLog.instance.filteredCount} 条封面/网络噪音（图片 404、图片域名不可达）',
+                    style: const TextStyle(fontSize: 11),
                   ),
                 ),
+              Expanded(
+                child: entries.isEmpty
+                    ? const Center(child: Text('暂无错误记录'))
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: entries.length,
+                        separatorBuilder: (_, __) => const Divider(height: 20),
+                        itemBuilder: (context, index) => SelectableText(
+                          entries[index],
+                          style: const TextStyle(fontSize: 11, height: 1.5, fontFamily: 'monospace'),
+                        ),
+                      ),
+              ),
+            ],
+          ),
         );
       },
     );

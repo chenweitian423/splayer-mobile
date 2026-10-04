@@ -9,6 +9,7 @@ import '../runtime/plugin_engine.dart';
 import '../runtime/widget_runtime.dart';
 import '../store/plugin_store.dart';
 import 'common.dart';
+import 'poster_image.dart';
 import 'detail_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -32,6 +33,8 @@ class _HomePageState extends State<HomePage> {
           onRefresh: () async {
             // 下拉刷新 = 唯一主动清缓存的入口：清掉首屏缓存并卸载运行时，全部重新拉。
             clearHomeSectionCache();
+            // 也给「上次刚好抽风」的封面地址一次机会。
+            clearDeadImageCache();
             for (final record in records) {
               PluginEngine.instance.drop(record.id);
             }
