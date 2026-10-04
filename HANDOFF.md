@@ -11,17 +11,28 @@
 > |---|---|
 > | 仓库 | https://github.com/chenweitian423/splayer-mobile （public，默认分支 main） |
 > | 本地工程 | `C:\Users\47403\WorkBuddy\2026-10-03-23-40-41\splayer_mobile` |
-> | 版本 | **v1.0.3**（v1.0.0–v1.0.2 已发布；v1.0.3 修 MissAV 播放 + 播放器补齐选集/竖滑/倍速） |
+> | 版本 | **v1.0.3**（tag 已推，Release 挂 APK + 未签名 IPA；HEAD = `fe5fa48`，与 origin/main 同步） |
 > | 技术栈 | Flutter 3.32.0 / Dart 3.8，单代码库出 Android + iOS |
 > | 运行时 | 每个组件一个 WebView 沙箱（`assets/runtime/capy_runtime.js` + jQuery 3.7.1） |
-> | 校验 | 容器内 `flutter analyze` 零问题、`flutter test` 12/12；组件契约冒烟 `tools/widget-smoke.mjs` |
-> | 起点依据 | 判定报告 `_recon\SPlayer_TV_1.8-组件兼容判定.md` + 判定器 `_recon\apk_widget_compat.py` |
+> | 校验 | `flutter analyze` 零问题、Dart 单测 **21/21**、Node 桥接契约 **17/17**（CI 全绿，四 job：analyze/android/ios/release） |
+> | 真机进度 | iOS 装 v1.0.2 实测：8 支组件都能进详情、多数组件可播；**v1.0.3（MissAV 播放 + 播放器三件套）待用户真机复验** |
+> | 现场资产 | 逆向产物都在 **`C:\Users\47403\WorkBuddy\2026-10-03-23-40-41\_recon\`**（不在仓库里）：8 支组件源码 `widgets\*.js`、判定报告 `SPlayer_TV_1.8-组件兼容判定.md`、判定器 `apk_widget_compat.py`、沙箱 `widget_harness.mjs` |
+> | 最后更新 | 2026-10-04 13:25（刷新启动包） |
+>
+> 一键复跑验证（本机无 Flutter，走容器；注意 `MSYS_NO_PATHCONV=1` + 持久 pub 缓存卷）：
+> ```bash
+> export MSYS_NO_PATHCONV=1
+> cd C:/Users/47403/WorkBuddy/2026-10-03-23-40-41
+> docker run --rm -v "$PWD:/work" -v splayer_pub_cache:/root/.pub-cache -w /work/splayer_mobile \
+>   ghcr.io/cirruslabs/flutter:3.32.0 bash -lc \
+>   "flutter pub get && flutter analyze && flutter test && node tools/runtime-contract-test.mjs"
+> ```
 >
 > **③ 下一步待办（按优先级）**
-> 1. **真机复测 v1.0.3**：MissAV 点播（应走 `player=hls` 首选线路；若 hls 变体后端也不给，播放器会自动回落到原始线路并显示两条候选）；播放页验「上滑下一集 / 选集面板 / 倍速 / 线路切换」。
-> 2. 若 MissAV 仍然两条线路都失败：进 **设置 → 网络日志** 复制全文发我，重点看 `/api/v1/subtitles/master.m3u8` 的返回状态。
-> 3. 播放内核升级：mpv 变体是给 mpv 内核用的，要彻底吃下就得把 `video_player` 换 `media_kit`（native mpv）。
-> 4. 待补能力：`Widget.tmdb`、`sectionMode`、TV 大屏布局、字幕/弹幕面板。
+> 1. **真机复测 v1.0.3**（用户侧）：MissAV 点播应走 `player=hls` 首选线路（失败自动回落原始线路，底栏「线路 1/2」可手动切）；播放页验「上滑下一集 / 选集面板 / 倍速」。
+> 2. MissAV 若两条线路都失败：让用户走 **设置 → 网络日志 → 复制**，重点看 `/api/v1/subtitles/master.m3u8` 的返回状态，再决定是否上 mpv 内核。
+> 3. 播放内核升级（可选）：要彻底吃下 mpv 专用清单，把 `video_player` 换 `media_kit`（native mpv）。
+> 4. 待补能力：`Widget.tmdb`、`sectionMode`、TV 大屏布局、字幕/弹幕面板、播放进度记忆。
 >
 > **④ 铁律（踩过的坑）**
 > - **不要试图 1:1 反编译还原**：原 TV 版是 Kotlin+Compose 编译产物（78MB / 13 dex / R8 混淆），Compose 编译期变换不可逆。只做 clean-room（同规范、同模型、同能力）。
