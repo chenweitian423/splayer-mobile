@@ -112,6 +112,8 @@
 - `SPlayerMobile-v1.0.7-android.apk` 55.5 MB sha256 `2940eb24…784c`
 - `SPlayerMobile-v1.0.7-ios-unsigned.ipa` 23.7 MB sha256 `493abb59…9270`
 
+本地产物：`F:\codex项目\播放器app\build\release\v1.0.7\`（sha256 已与 Release 核对一致）。
+
 ### 2026-10-04 · v1.0.6 播放进度记忆 + 观看历史
 
 用户要「播放进度记忆，也就是历史记录，能清理」。
