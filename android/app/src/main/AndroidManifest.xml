@@ -32,6 +32,16 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- 组件托管页（happy-capy /ext/ 一类）上的「安装」按钮走这个 scheme：
+                 com.feifeiduck.capyplayer://add-widget?data=base64url(js 直链)
+                 点击后直接唤起本 App 安装组件，不再需要手抄地址。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="com.feifeiduck.capyplayer" android:host="add-widget"/>
+                <data android:scheme="splayer" android:host="add-widget"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

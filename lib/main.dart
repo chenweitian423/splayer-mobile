@@ -4,8 +4,11 @@
 /// `functionName` + `Widget.http` / `Widget.html` / `Widget.dom` + `loadDetail`。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import 'runtime/deep_link.dart';
 import 'runtime/plugin_engine.dart';
 import 'store/app_settings.dart';
 import 'store/error_log.dart';
@@ -27,6 +30,8 @@ Future<void> main() async {
   await PluginStore.instance.load();
   await HistoryStore.instance.load();
   await AppSettings.instance.load();
+  // 深链通道要在首帧之前装好，否则冷启动带进来的链接会丢。
+  await DeepLinkService.install();
   runApp(const SPlayerApp());
 }
 
@@ -82,8 +87,37 @@ class _RootShellState extends State<RootShell> {
   @override
   void initState() {
     super.initState();
+    DeepLinkService.pending.addListener(_onDeepLink);
     // 启动后延一会儿再查更新：别和首屏那批 WebView 抢资源。
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoCheckUpdate());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_autoCheckUpdate());
+      // 冷启动带进来的安装链接，这时才有 ScaffoldMessenger 可用。
+      unawaited(_onDeepLink());
+    });
+  }
+
+  @override
+  void dispose() {
+    DeepLinkService.pending.removeListener(_onDeepLink);
+    super.dispose();
+  }
+
+  /// 收到 `xxx://add-widget?data=…`（托管页的「安装」按钮）→ 直接装组件。
+  Future<void> _onDeepLink() async {
+    final link = DeepLinkService.pending.value;
+    if (link == null || link.isEmpty) return;
+    DeepLinkService.consume();
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final record = await PluginStore.instance.importFromUrl(link);
+      if (!mounted) return;
+      // 切到「插件」页，让用户看见装了什么，而不是毫无反应。
+      setState(() => _index = 3);
+      messenger.showSnackBar(SnackBar(content: Text('已安装组件：${record.title} v${record.version}')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('安装失败：$e')));
+    }
   }
 
   Future<void> _autoCheckUpdate() async {

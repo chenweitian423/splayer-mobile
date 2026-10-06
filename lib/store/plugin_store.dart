@@ -20,6 +20,63 @@ import '../runtime/widget_runtime.dart';
 /// 从托管页里挑 js 的正则（与 SPlayer dex 里的实现一致）。
 final RegExp kJsLinkPattern = RegExp("[\"']([^\"'\\s<>]+?\\.js(?:\\?[^\"'\\s<>]*)?)[\"']");
 
+/// 组件深链：`<scheme>://add-widget?data=<base64url>`（CapyPlayer / SPlayer 通用约定）。
+///
+/// happy-capy 的 `/ext/` 托管页给每张卡片挂的就是这种链接，`data` 里装的是
+/// `base64url(js 直链)`。本 App 注册同名 scheme 后即可被这类页面直接唤起。
+final RegExp kWidgetDeepLinkPattern =
+    RegExp(r'^[A-Za-z][A-Za-z0-9+.\-]*://[^?\s]*[?&]data=([^\s&]+)');
+
+/// 深链 → 真实 js 直链；不是深链（或解出来不是 http(s)）就原样返回。
+///
+/// ★ 先判 http(s) 再解 base64：普通地址上带 `?data=` 参数很常见，
+/// 不设这道闸就会把好好的直链“解”成一段乱码。
+String resolveWidgetDeepLink(String text) {
+  final value = text.trim();
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  final match = kWidgetDeepLinkPattern.firstMatch(value);
+  if (match == null) return value;
+  final decoded = _decodeBase64Url(match.group(1) ?? '').trim();
+  if (!decoded.startsWith('http://') && !decoded.startsWith('https://')) return value;
+  return decoded;
+}
+
+/// 输入是不是「可下载的组件地址」—— http(s) 直链，或组件深链。
+bool looksLikeWidgetUrl(String text) {
+  final value = text.trim();
+  if (value.startsWith('http://') || value.startsWith('https://')) return true;
+  return resolveWidgetDeepLink(value) != value;
+}
+
+String _decodeBase64Url(String token) {
+  try {
+    // 页面里发出来的 token 去掉了尾部 `=`，normalize 会把它补回来。
+    return utf8.decode(base64Url.decode(base64Url.normalize(token)), allowMalformed: true);
+  } catch (_) {
+    return '';
+  }
+}
+
+/// 托管页里的一个 .js 引用可能对应多个候选地址。
+///
+/// ★ 踩过的坑（2026-10-07）：`/ext/` 这类托管页只写**裸文件名**
+/// （数据形如 `"file": "ALLINONE.js"`，真实地址由页面 JS 用
+/// `location.origin + '/widgets/' + file` 现拼）。只按「页面相对路径」拼会变成
+/// `/ext/ALLINONE.js` —— 实测 47 个引用**全部 404**，现象就是
+/// 「扫描到 47 个 .js，其中 0 个是组件」。所以对裸文件名追加同源 `/widgets/` 约定。
+List<String> widgetCandidateUrls(Uri page, String ref) {
+  final raw = ref.trim();
+  if (raw.isEmpty) return const <String>[];
+  final resolved = page.resolve(raw).toString();
+  final urls = <String>[resolved];
+  // 只有「裸文件名」才回退：带路径的引用说明页面已经写清了目录，乱猜反而有害。
+  if (!raw.contains('/') && !raw.startsWith('?') && page.hasScheme && page.authority.isNotEmpty) {
+    final fallback = '${page.scheme}://${page.authority}/widgets/$raw';
+    if (fallback != resolved) urls.add(fallback);
+  }
+  return urls;
+}
+
 class PluginRecord {
   PluginRecord({
     required this.id,
@@ -147,9 +204,10 @@ class PluginStore extends ChangeNotifier {
     return slug;
   }
 
-  /// 从网络地址导入（也支持直接粘贴整段 js 源码）。
+  /// 从网络地址导入（也支持直接粘贴整段 js 源码、以及 `xxx://add-widget?data=…` 深链）。
   Future<PluginRecord> importFromUrl(String rawUrl) async {
-    final url = rawUrl.trim();
+    // 深链里装的是 base64url(直链)，先还原成直链再下。
+    final url = resolveWidgetDeepLink(rawUrl);
     final uri = Uri.tryParse(url);
     if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
       throw RuntimeException('地址无效，需要 http/https 开头的 js 直链');
@@ -250,6 +308,9 @@ class PluginStore extends ChangeNotifier {
   }
 
   /// 扫「组件托管页」：把页面上出现过的全部 .js 列出来并逐个验证。
+  ///
+  /// 每个引用会按 [widgetCandidateUrls] 给出的候选地址**逐级探测，命中即停**
+  /// —— 这样 `/ext/`（裸文件名 + 同源 `/widgets/`）这类页面也能扫对。
   Future<List<HostPageCandidate>> scanHostPage(String rawUrl) async {
     final uri = Uri.tryParse(rawUrl.trim());
     if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
@@ -260,21 +321,49 @@ class PluginStore extends ChangeNotifier {
       throw RuntimeException('托管页打不开：HTTP ${response.statusCode}');
     }
     final html = utf8.decode(response.bodyBytes, allowMalformed: true);
-    final links = <String>{};
+    final refs = <String>[];
     for (final match in kJsLinkPattern.allMatches(html)) {
       final raw = match.group(1) ?? '';
       if (raw.isEmpty || raw.startsWith('data:')) continue;
-      final resolved = uri.resolve(raw).toString();
-      links.add(resolved);
+      if (!refs.contains(raw)) refs.add(raw);
     }
-    final list = links.toList();
+
     final results = <HostPageCandidate>[];
-    const batchSize = 4;
-    for (var i = 0; i < list.length; i += batchSize) {
-      final batch = list.sublist(i, i + batchSize > list.length ? list.length : i + batchSize);
-      final settled = await Future.wait(batch.map(_probe));
-      results.addAll(settled);
+    var queue = <_ProbeTarget>[];
+    for (final ref in refs) {
+      final urls = widgetCandidateUrls(uri, ref);
+      if (urls.isNotEmpty) queue.add(_ProbeTarget(urls));
     }
+
+    const batchSize = 4;
+    while (queue.isNotEmpty) {
+      final probed = <HostPageCandidate>[];
+      for (var i = 0; i < queue.length; i += batchSize) {
+        final end = (i + batchSize <= queue.length) ? i + batchSize : queue.length;
+        probed.addAll(await Future.wait(queue.sublist(i, end).map((t) => _probe(t.current))));
+      }
+      final next = <_ProbeTarget>[];
+      for (var i = 0; i < queue.length; i++) {
+        final target = queue[i];
+        final result = probed[i];
+        if (result.valid) {
+          results.add(result);
+        } else if (target.advance()) {
+          next.add(target);
+        } else {
+          results.add(HostPageCandidate(
+            url: target.first,
+            valid: false,
+            // 把「试过哪些地址」写进错误里：否则用户只看到「不是组件脚本」，无法自查。
+            error: target.urls.length > 1
+                ? '${result.error}（已试 ${target.urls.map((u) => Uri.parse(u).path).join('、')}）'
+                : result.error,
+          ));
+        }
+      }
+      queue = next;
+    }
+
     results.sort((a, b) {
       if (a.valid != b.valid) return a.valid ? -1 : 1;
       return a.url.compareTo(b.url);
@@ -299,5 +388,23 @@ class PluginStore extends ChangeNotifier {
     } catch (e) {
       return HostPageCandidate(url: url, valid: false, error: '$e');
     }
+  }
+}
+
+/// 一条待探测的引用：按候选地址顺序往下试，命中即停。
+class _ProbeTarget {
+  _ProbeTarget(this.urls);
+
+  final List<String> urls;
+  int _index = 0;
+
+  String get current => urls[_index];
+  String get first => urls.first;
+
+  /// 还有下一个候选就前进一步并返回 true。
+  bool advance() {
+    if (_index + 1 >= urls.length) return false;
+    _index += 1;
+    return true;
   }
 }

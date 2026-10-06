@@ -53,12 +53,20 @@ class _PluginManagerPageState extends State<PluginManagerPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('从网络地址导入'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 3,
-          minLines: 1,
-          decoration: const InputDecoration(hintText: 'https://example.com/widgets/x.js'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text('粘贴 js 直链，或托管页上的「安装」深链（add-widget?data=…）。', style: TextStyle(fontSize: 12)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 3,
+              minLines: 1,
+              decoration: const InputDecoration(hintText: 'https://example.com/widgets/x.js'),
+            ),
+          ],
         ),
         actions: <Widget>[
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
@@ -89,7 +97,7 @@ class _PluginManagerPageState extends State<PluginManagerPage> {
       return;
     }
     await _run('正在导入…', () async {
-      if (text.startsWith('http')) {
+      if (looksLikeWidgetUrl(text)) {
         final record = await PluginStore.instance.importFromUrl(text);
         return '已导入：${record.title}';
       }
@@ -129,7 +137,11 @@ class _PluginManagerPageState extends State<PluginManagerPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text('粘贴托管页地址，会自动列出页面上出现的全部 .js 并逐个校验。', style: TextStyle(fontSize: 12)),
+            const Text(
+              '粘贴托管页地址，会自动列出页面上出现的全部 .js 并逐个校验；'
+              '页面里只写文件名（真实地址在 /widgets/ 下）的托管页也能识别。',
+              style: TextStyle(fontSize: 12),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
@@ -346,7 +358,7 @@ class _PluginManagerPageState extends State<PluginManagerPage> {
             ListTile(
               leading: const Icon(Icons.content_paste),
               title: const Text('从剪贴板粘贴'),
-              subtitle: const Text('支持地址或整段 js 源码'),
+              subtitle: const Text('支持直链、安装深链或整段 js 源码'),
               onTap: () {
                 Navigator.pop(context);
                 _importFromClipboard();
