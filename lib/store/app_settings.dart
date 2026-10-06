@@ -11,9 +11,11 @@ class AppSettings extends ChangeNotifier {
 
   static const String _kAutoPlayNext = 'autoPlayNext';
   static const String _kAutoCheckUpdate = 'autoCheckUpdate';
+  static const String _kTmdbProxyBase = 'tmdbProxyBase';
 
   bool _autoPlayNext = true;
   bool _autoCheckUpdate = true;
+  String _tmdbProxyBase = '';
 
   /// 一集播完自动接下一集（详情页是剧集模式时才生效）。
   bool get autoPlayNext => _autoPlayNext;
@@ -21,11 +23,19 @@ class AppSettings extends ChangeNotifier {
   /// 启动时自动查一次更新（只提示，不自动装）。
   bool get autoCheckUpdate => _autoCheckUpdate;
 
+  /// TMDB 中转地址（形如 `http://192.168.123.80:8788/ext/tmdb`）。
+  ///
+  /// 组件里的 `Widget.tmdb.get(path, opts)` 会被打到这个地址，由中转侧带
+  /// TMDB API Key（并走转发机自己的网络）去请求 —— 解决「客户端连不上
+  /// api.themoviedb.org」的问题。留空时尝试从组件来源地址自动推导。
+  String get tmdbProxyBase => _tmdbProxyBase;
+
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _autoPlayNext = prefs.getBool(_kAutoPlayNext) ?? true;
       _autoCheckUpdate = prefs.getBool(_kAutoCheckUpdate) ?? true;
+      _tmdbProxyBase = (prefs.getString(_kTmdbProxyBase) ?? '').trim();
     } catch (e) {
       debugPrint('读取设置失败: $e');
     }
@@ -44,6 +54,20 @@ class AppSettings extends ChangeNotifier {
     _autoCheckUpdate = value;
     notifyListeners();
     await _write(_kAutoCheckUpdate, value);
+  }
+
+  /// 设置 TMDB 中转地址（传空串 = 恢复自动推导）。
+  Future<void> setTmdbProxyBase(String value) async {
+    final next = value.trim();
+    if (_tmdbProxyBase == next) return;
+    _tmdbProxyBase = next;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kTmdbProxyBase, next);
+    } catch (e) {
+      debugPrint('写入设置失败: $e');
+    }
   }
 
   Future<void> _write(String key, bool value) async {

@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/capy_models.dart';
+import '../store/app_settings.dart';
 import '../store/plugin_store.dart';
 
 const String kBridgeName = 'CapyBridge';
@@ -184,6 +185,7 @@ class WidgetRuntime {
     final buffer = StringBuffer()
       ..writeln('<!DOCTYPE html><html><head><meta charset="utf-8">')
       ..writeln('<script>window.__CAPY_PLUGIN_ID__=${jsonEncode(record.id)};</script>')
+      ..writeln('<script>window.__CAPY_TMDB_BASE__=${jsonEncode(tmdbProxyBase)};</script>')
       ..writeln('<script>')
       ..writeln(_jquerySource)
       ..writeln('</script>')
@@ -192,6 +194,22 @@ class WidgetRuntime {
       ..writeln('</script>')
       ..writeln('</head><body></body></html>');
     return buffer.toString();
+  }
+
+  /// TMDB 中转地址。
+  ///
+  /// 优先取「设置里显式填写」的值；没填时，若组件来自 `/widgets/` 托管路径
+  /// （即 happy-capy 一类自建源），就用它的 origin 推导出 `<origin>/ext/tmdb`。
+  /// 推不出来返回空串 —— 运行时里的 `Widget.tmdb` 会给出明确报错，而不是静默失败。
+  String get tmdbProxyBase {
+    final explicit = AppSettings.instance.tmdbProxyBase.trim();
+    if (explicit.isNotEmpty) return explicit;
+    final source = record.sourceUrl.trim();
+    if (source.isEmpty) return '';
+    final uri = Uri.tryParse(source);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return '';
+    if (!uri.path.contains('/widgets/')) return '';
+    return '${uri.scheme}://${uri.authority}/ext/tmdb';
   }
 
   /// 计算参数默认值：globalParams 兜底 + 模块常量参数。

@@ -114,6 +114,18 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
             const Divider(),
+            ListTile(
+              leading: const Icon(Icons.movie_filter_outlined),
+              title: const Text('TMDB 中转地址'),
+              subtitle: Text(
+                AppSettings.instance.tmdbProxyBase.isEmpty
+                    ? '未设置 · 留空时从组件来源地址自动推导'
+                    : AppSettings.instance.tmdbProxyBase,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onTap: () => _editTmdbProxy(),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Text('组件运行时能力', style: theme.textTheme.titleSmall),
@@ -122,8 +134,8 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
                 '已实现：Widget.http(get/post/put/request)、Widget.html.load（jQuery 解析）、'
-                'Widget.dom(parse/select/text/attr/remove)、Widget.storage、Widget.util.log\n'
-                '未实现：Widget.tmdb（需要 TMDB API Key）\n'
+                'Widget.dom(parse/select/text/attr/remove)、Widget.storage、Widget.util.log、'
+                'Widget.tmdb（经「TMDB 中转地址」，见上一项）\n'
                 '每个组件独立 WebView，互不干扰。',
                 style: TextStyle(fontSize: 12, height: 1.6),
               ),
@@ -146,6 +158,49 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         );
       },
+    );
+  }
+
+  /// 编辑 TMDB 中转地址。
+  ///
+  /// 刻意**不接收 BuildContext 参数** —— 传参 context 在经过 await 之后使用会被
+  /// `use_build_context_synchronously` 判为风险（本项目 `flutter analyze` 连 info
+  /// 级 lint 都不放过）。统一用 State 自己的 `context` + `mounted` 守卫。
+  Future<void> _editTmdbProxy() async {
+    final controller = TextEditingController(text: AppSettings.instance.tmdbProxyBase);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('TMDB 中转地址'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            hintText: 'http://192.168.123.80:8788/ext/tmdb',
+            helperText: '留空 = 从组件来源地址自动推导',
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !mounted) return;
+    await AppSettings.instance.setTmdbProxyBase(value);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(value.trim().isEmpty ? '已恢复自动推导' : '已保存 TMDB 中转地址'),
+      ),
     );
   }
 }

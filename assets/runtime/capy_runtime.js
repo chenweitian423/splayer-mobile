@@ -345,9 +345,37 @@
       get: function (url, opts) { return request('GET', url, opts); }
     },
 
+    // TMDB：本机直连 api.themoviedb.org 在部分网络下不可达，所以这里不直连，
+    // 而是打到「中转地址」——由宿主注入 window.__CAPY_TMDB_BASE__
+    // （形如 http://<host>:8788/ext/tmdb）。中转侧持 Key 并走它自己的出口网络。
     tmdb: {
-      get: function () {
-        return Promise.reject(makeError('Widget.tmdb 未实现（需要 TMDB API Key，本运行时未内置）', 0, '', {}));
+      get: function (path, opts) {
+        opts = opts || {};
+        var base = String(window.__CAPY_TMDB_BASE__ || '');
+        if (!base) {
+          return Promise.reject(makeError(
+            '未配置 TMDB 中转地址：在「设置 → TMDB 中转地址」填写，或使用支持中转的组件源',
+            0, '', {}));
+        }
+        var target = String(path == null ? '' : path);
+        if (!target) {
+          return Promise.reject(makeError('Widget.tmdb.get 需要传入 path', 0, '', {}));
+        }
+        var parts = [];
+        var params = opts.params || {};
+        Object.keys(params).forEach(function (key) {
+          var value = params[key];
+          if (value === undefined || value === null || value === '') { return; }
+          parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(value)));
+        });
+        var url = base.replace(/\/+$/, '') + (target.charAt(0) === '/' ? target : '/' + target);
+        if (parts.length) {
+          url += (url.indexOf('?') >= 0 ? '&' : '?') + parts.join('&');
+        }
+        return request('GET', url, {
+          headers: opts.headers || {},
+          timeout: Number(opts.timeout || 20000) || 20000
+        });
       }
     }
   };
