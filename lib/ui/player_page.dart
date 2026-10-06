@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/play_queue.dart';
+import '../playback/hls_relay.dart';
 import '../store/app_settings.dart';
 import '../store/error_log.dart';
 import '../store/history_store.dart';
@@ -104,6 +105,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
     String lastError = '';
     final failures = <String>[];
+    final relayOn = AppSettings.instance.hlsRelay;
     for (var i = candidateIndex; i < candidates.length; i++) {
       final candidate = candidates[i];
       if (!mounted) return;
@@ -112,10 +114,28 @@ class _PlayerPageState extends State<PlayerPage> {
         _triedUrl = candidate.url;
       });
 
+      // ★ 播放兼容中转（设置里可开）：把 HLS 分片/密钥改走本机，
+      //   由 App 自己带长超时 + 重试去拉上游；播放器只面对 localhost。
+      var effectiveUrl = candidate.url;
+      var relayed = false;
+      if (relayOn && HlsRelay.looksLikeHls(candidate.url)) {
+        try {
+          await HlsRelay.instance.ensureStarted();
+          effectiveUrl = HlsRelay.instance.wrap(
+            candidate.url,
+            referer: candidate.headers['Referer'] ?? candidate.headers['referer'] ?? '',
+          );
+          relayed = effectiveUrl != candidate.url;
+        } catch (e) {
+          debugPrint('[player] 中转启动失败，回退直连：$e');
+        }
+      }
+
       final controller = VideoPlayerController.networkUrl(
-        Uri.parse(candidate.url),
+        Uri.parse(effectiveUrl),
         httpHeaders: candidate.headers,
-        formatHint: _formatHintOf(candidate.url),
+        // 走中转后地址不再有扩展名，这里显式声明 HLS。
+        formatHint: _formatHintOf(effectiveUrl) ?? (relayed ? VideoFormat.hls : null),
       );
       _controller = controller;
       try {
@@ -129,7 +149,9 @@ class _PlayerPageState extends State<PlayerPage> {
         return;
       } catch (e) {
         lastError = e.toString();
-        failures.add('线路 ${i + 1}/${candidates.length}：${candidate.url}\n      → $e');
+        failures.add(
+          '线路 ${i + 1}/${candidates.length}${relayed ? '（经中转）' : ''}：${candidate.url}\n      → $e',
+        );
         await controller.dispose();
         if (identical(_controller, controller)) _controller = null;
         debugPrint('[player] 线路失败（$i/${candidates.length}）：$lastError');
@@ -141,7 +163,8 @@ class _PlayerPageState extends State<PlayerPage> {
     //   带上平台与逐条线路的报错，下一份日志就能直接定位。
     ErrorLog.instance.add(
       '播放',
-      '平台=${Platform.operatingSystem} 页面=${widget.title} 条目=${_current.title}\n'
+      '平台=${Platform.operatingSystem} 页面=${widget.title} 条目=${_current.title}'
+          '${relayOn ? ' 中转=开' : ''}\n'
           '${failures.join('\n')}',
       null,
     );

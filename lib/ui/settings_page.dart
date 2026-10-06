@@ -68,6 +68,14 @@ class _SettingsPageState extends State<SettingsPage> {
               value: AppSettings.instance.autoCheckUpdate,
               onChanged: (value) => AppSettings.instance.setAutoCheckUpdate(value),
             ),
+            SwitchListTile(
+              secondary: const Icon(Icons.hub_outlined),
+              title: const Text('播放兼容中转'),
+              subtitle: const Text('分片改由本机转发（超时更宽、失败重试）。'
+                  'Android 报「Source error」而 iOS 能播时打开它'),
+              value: AppSettings.instance.hlsRelay,
+              onChanged: (value) => AppSettings.instance.setHlsRelay(value),
+            ),
             ListTile(
               leading: const Icon(Icons.bug_report_outlined),
               title: const Text('错误日志'),
